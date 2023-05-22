@@ -5,6 +5,10 @@ import { markdownOptions } from '../sitetheme/markdownOptions';
 
 const theme = createTheme(); // Add your theme object here
 
+// I will create a single markdown file and use that
+// Importing multiple files is a nightmare
+// The example is in loadMd.js to load a single MD file
+
 const pageTitle = `# Hamburg`
 
 const markdownContent = `
