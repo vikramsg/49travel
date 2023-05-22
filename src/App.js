@@ -1,6 +1,6 @@
 import logo from './logo.svg';
 import './App.css';
-import SinglePage from './SinglePage';
+import SinglePage from './components/SinglePage';
 
 function App() {
   return (
