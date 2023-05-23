@@ -16,6 +16,10 @@ const markdownContent = `
 
 This is the first paragraph. It can contain any text you want to display.
 
+| Origin | Destination | Train | Journey time |
+| -------- | ------- |-------- | ------- |
+| Hamburg | Flensburg | RE 7 | 1h 57min | 
+
 ## Lubeck 
 
 This is the second paragraph. It can have different content than the first paragraph.
