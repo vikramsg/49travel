@@ -16,9 +16,9 @@ const markdownContent = `
 
 This is the first paragraph. It can contain any text you want to display.
 
-| Origin | Destination | Train | Journey time |
-| -------- | ------- |-------- | ------- |
-| Hamburg | Flensburg | RE 7 | 1h 57min | 
+**Train**: RE 7 
+
+**Journey Time**: 1h 57min   
 
 ## Lubeck 
 
