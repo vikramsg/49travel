@@ -1,4 +1,4 @@
-import file from "./hamburg_towns/town1.md";
+import file from "./hamburg_towns/destinations.md";
 import { markdownOptions } from "../sitetheme/markdownOptions"
 
 const SinglePage = () => {
