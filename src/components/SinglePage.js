@@ -13,20 +13,6 @@ const theme = createTheme(); // Add your theme object here
 
 const pageTitle = `# Hamburg`
 
-const markdownContentOld = `
-## Flensburg
-
-This is the first paragraph. It can contain any text you want to display.
-
-**Train**: RE 7 
-
-**Journey Time**: 1h 57min   
-
-## Lubeck 
-
-This is the second paragraph. It can have different content than the first paragraph.
-`;
-
 const SinglePage = () => {
     const [markdownContent, setMarkdown] = useState("");
 
