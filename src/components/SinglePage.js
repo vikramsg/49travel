@@ -2,6 +2,7 @@ import React from 'react';
 import { Grid, Typography, Divider, createTheme } from '@mui/material';
 import ReactMarkdown from 'react-markdown';
 import { markdownOptions } from '../sitetheme/markdownOptions';
+import file from "./hamburg_towns/destinations.md";
 
 const theme = createTheme(); // Add your theme object here
 
@@ -11,7 +12,7 @@ const theme = createTheme(); // Add your theme object here
 
 const pageTitle = `# Hamburg`
 
-const markdownContent = `
+const markdownContentOld = `
 ## Flensburg
 
 This is the first paragraph. It can contain any text you want to display.
@@ -26,6 +27,14 @@ This is the second paragraph. It can have different content than the first parag
 `;
 
 const SinglePage = () => {
+    const [markdownContent, setMarkdown] = useState("");
+
+    useEffect(() => {
+        fetch(file)
+            .then((res) => res.text())
+            .then((text) => setMarkdown(text));
+    }, []);
+
     return (
         <Grid
             container
