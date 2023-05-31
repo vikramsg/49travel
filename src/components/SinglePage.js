@@ -2,6 +2,7 @@ import React from 'react';
 import { Grid, Typography, Divider, createTheme } from '@mui/material';
 import ReactMarkdown from 'react-markdown';
 import { markdownOptions } from '../sitetheme/markdownOptions';
+import { useState, useEffect } from 'react';
 import file from "./hamburg_towns/destinations.md";
 
 const theme = createTheme(); // Add your theme object here
