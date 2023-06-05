@@ -4,6 +4,8 @@ import Home from './components/Home';
 import TopBar from './components/TopBar';
 import About from './components/About';
 import Hamburg from './origin/Hamburg';
+import { Analytics } from '@vercel/analytics/react';
+
 
 const App = () => {
   return (
