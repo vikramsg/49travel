@@ -47,8 +47,8 @@ const Home = () => {
                             className={`text-decoration-none ${card.title === 'Hamburg' ? 'card-clickable' : ''}`}
                         >
                             <Card className={`h-100 ${card.clickable ? 'card-clickable' : ''}`}>
+                                <Card.Header><h5>{card.title}</h5></Card.Header>
                                 <Card.Body>
-                                    <Card.Title>{card.title}</Card.Title>
                                     <Card.Text>{card.text}</Card.Text>
                                 </Card.Body>
                             </Card>
