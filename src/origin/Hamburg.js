@@ -48,7 +48,12 @@ const Hamburg = () => {
                                 </Card.Text>
                                 {card.expanded && (
                                     <>
-                                        <Card.Text>{card.description}</Card.Text>
+                                        <div className="d-grid gap-2">
+                                            <a href="https://reiseauskunft.bahn.de/bin/query.exe/dn?protocol=https:" target="_blank" rel="noopener noreferrer">
+                                                <button className="btn btn-primary btn-sm">Live Status</button>
+                                            </a>
+                                        </div>
+                                        <Card.Text className="mt-3">{card.description}</Card.Text>
                                         <Card.Text>
                                             Find out more at <a href={card.url}>WikiVoyage</a>.
                                         </Card.Text>
