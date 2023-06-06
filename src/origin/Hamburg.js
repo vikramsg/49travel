@@ -2,14 +2,14 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Container, Row, Col, Card } from 'react-bootstrap';
 import { formatDuration, intervalToDuration } from 'date-fns';
 
-import cardsData from '../data/hamburg_destinations.json';
+import cardsData from '../data/hamburg.json';
 
 const Hamburg = () => {
     const [cards, setCards] = useState([]);
     const expandedCardRef = useRef(null);
 
     useEffect(() => {
-        setCards(cardsData.cards);
+        setCards(cardsData.cities);
 
         const handleClickOutside = (event) => {
             if (expandedCardRef.current && !expandedCardRef.current.contains(event.target)) {
@@ -52,7 +52,7 @@ const Hamburg = () => {
                                             Journey time is {formatDuration(intervalToDuration({ start: 0, end: card.journey_time * 1000 }))}
                                         </Card.Text>
                                         <a href={card.url}>{"WikiVoyage"}</a>
-                                        <Card.Text>{card.city_description}</Card.Text>
+                                        <Card.Text>{card.description}</Card.Text>
                                     </div>
                                 ) : (
                                     <Card.Text>
