@@ -19,6 +19,7 @@ const App = () => {
           {/* Add more routes for other pages */}
         </Routes>
       </Router>
+      <Analytics />;
     </div>
   );
 };
