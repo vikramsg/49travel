@@ -6,7 +6,7 @@ const Home = () => {
     const cards = [
         {
             title: "Hamburg",
-            text: "Find out all destinations you can take from Hamburg using only your 49 Euro ticket.",
+            text: "Find out all destinations you can reach from Hamburg using only your 49 Euro ticket.",
             link: "/origin/hamburg",
             clickable: true,
         },
