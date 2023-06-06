@@ -29,8 +29,10 @@ const Hamburg = () => {
                                 </Card.Text>
                                 {card.expanded && (
                                     <>
-                                        <a href={card.url}>WikiVoyage</a>
                                         <Card.Text>{card.description}</Card.Text>
+                                        <Card.Text>
+                                            Find out more at <a href={card.url}>WikiVoyage</a>.
+                                        </Card.Text>
                                     </>
                                 )}
                                 <div
