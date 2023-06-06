@@ -5,60 +5,44 @@ import { formatDuration, intervalToDuration } from 'date-fns';
 import cardsData from '../data/hamburg.json';
 
 const Hamburg = () => {
-    const [cards, setCards] = useState([]);
-    const expandedCardRef = useRef(null);
+    const [cards, setCards] = useState(cardsData.cities);
 
-    useEffect(() => {
-        setCards(cardsData.cities);
-
-        const handleClickOutside = (event) => {
-            if (expandedCardRef.current && !expandedCardRef.current.contains(event.target)) {
-                setCards((prevCards) =>
-                    prevCards.map((card) => ({ ...card, expanded: false }))
-                );
-            }
-        };
-
-        document.addEventListener('click', handleClickOutside);
-
-        return () => {
-            document.removeEventListener('click', handleClickOutside);
-        };
-    }, []);
-
-    const handleCardClick = (city) => {
+    const handleCardToggle = (index) => {
         setCards((prevCards) =>
-            prevCards.map((card) =>
-                card.city === city ? { ...card, expanded: true } : { ...card, expanded: false }
-            )
+            prevCards.map((card, i) => ({
+                ...card,
+                expanded: i === index ? !card.expanded : card.expanded
+            }))
         );
     };
 
     return (
         <Container className="d-flex justify-content-center mt-4">
             <Row xs={1} md={2} lg={2} className="g-4">
-                {cards.map((card) => (
+                {cards.map((card, index) => (
                     <Col key={card.city}>
-                        <Card
-                            ref={card.expanded ? expandedCardRef : null}
-                            className={`h-100 card-clickable ${card.expanded ? 'expanded' : ''}`}
-                            onClick={() => handleCardClick(card.city)}
-                        >
+                        <Card>
+                            <Card.Header><h5>{card.city}</h5></Card.Header>
                             <Card.Body>
-                                <Card.Title>{card.city}</Card.Title>
-                                {card.expanded ? (
-                                    <div>
-                                        <Card.Text>
-                                            Journey time is {formatDuration(intervalToDuration({ start: 0, end: card.journey_time * 1000 }))}
-                                        </Card.Text>
-                                        <a href={card.url}>{"WikiVoyage"}</a>
+                                <Card.Text>
+                                    Journey time is {formatDuration(intervalToDuration({ start: 0, end: card.journey_time * 1000 }))}
+                                </Card.Text>
+                                {card.expanded && (
+                                    <>
+                                        <a href={card.url}>WikiVoyage</a>
                                         <Card.Text>{card.description}</Card.Text>
-                                    </div>
-                                ) : (
-                                    <Card.Text>
-                                        Journey time is {formatDuration(intervalToDuration({ start: 0, end: card.journey_time * 1000 }))}
-                                    </Card.Text>
+                                    </>
                                 )}
+                                <div
+                                    className={`icon-wrapper ${card.expanded ? 'expanded' : ''}`}
+                                    onClick={() => handleCardToggle(index)}
+                                >
+                                    {card.expanded ? (
+                                        <i className="bi bi-caret-up-fill"></i>
+                                    ) : (
+                                        <i className="bi bi-caret-down-fill"></i>
+                                    )}
+                                </div>
                             </Card.Body>
                         </Card>
                     </Col>

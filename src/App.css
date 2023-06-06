@@ -49,3 +49,10 @@
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
   /* Add any other styling you want for the hover effect */
 }
+
+.icon-wrapper {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  padding: 8px;
+}
