@@ -22,9 +22,9 @@ const TopBar = () => {
                     rel="noopener noreferrer"
                     className="text-white me-4"
                 >
-                    <Github size={20} className="me-2" />
+                    <Github size={20} className="me-1" />
                 </a>
-                <Nav.Link href="/about" style={linkStyles} className="me-4 ms-3">
+                <Nav.Link href="/about" style={linkStyles} className="me-4 ms-2">
                     About
                 </Nav.Link>
             </Nav>
