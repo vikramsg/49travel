@@ -49,7 +49,7 @@ const Hamburg = () => {
                                 {card.expanded && (
                                     <>
                                         <div className="d-grid gap-2">
-                                            <a href={"http://mobile.bahn.de/bin/query.exe/dox?S=" + card.origin_stop +
+                                            <a href={"https://mobile.bahn.de/bin/query.exe/dox?S=" + card.origin_stop +
                                                 "&Z=" + card.destination_stop + "&timeSel=depart&start=1&journeyProducts=1100"}
                                                 target="_blank" rel="noopener noreferrer">
                                                 <button className="btn btn-primary btn-sm">Live Status</button>
