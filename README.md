@@ -9,4 +9,4 @@ Hi I am Vikram. I had the idea of creating this website when some friends and I 
 I plan to add new features and cities soon. Keep watching this space! 
 In the meantime you can reach me on [Twitter](https://twitter.com/WhinerVikram) or [Linkedin](https://www.linkedin.com/in/vikram-singh-phd/). 
 I also have a [blog](https://vikramsg.github.io/Blog) where I write about some of the stuff I am working on, 
-including about how I built this site(coming soon).
+including about how I built this site.
