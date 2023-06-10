@@ -19,10 +19,6 @@ const App = () => {
           {/* Add more routes for other pages */}
         </Routes>
       </Router>
-      <script
-        async src="https://analytics.umami.is/script.js"
-        data-website-id="59eb34b7-ef67-48e8-a55c-9d387ab2661a">
-      </script>
       <Analytics />;
     </div>
   );
