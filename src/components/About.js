@@ -17,7 +17,7 @@ const About = () => {
                             <a href="https://twitter.com/WhinerVikram">Twitter</a> or{' '}
                             <a href="https://www.linkedin.com/in/vikram-singh-phd/">Linkedin</a>.
                             I also have a <a href="https://vikramsg.github.io/Blog/">blog</a> where I write about some of the stuff I am working on,
-                            including about how I built this site(coming soon).
+                            including about <a href="https://vikramsg.github.io/blog_49travel/">how I built this site</>.
                         </p>
                     </div>
                 </Col>
