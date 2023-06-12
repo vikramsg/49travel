@@ -8,9 +8,10 @@ from langchain.chat_models import ChatOpenAI
 
 from src.common import city_table_connection
 from src.langchain_summarize import _get_llm, gpt_summary
-from src.model import WikiCategoryResponse, WikiPageResponse
+from src.model import CoordinatesQueryResponse, WikiCategoryResponse, WikiPageResponse
 
 _WIKIVOYAGE_URL = "https://en.wikivoyage.org/w/api.php"
+_WIKIPEDIA_URL = "https://en.wikipedia.org/w/api.php"
 
 
 def _category_query_params(category: str) -> Dict:
@@ -31,6 +32,15 @@ def _page_query_params(page_title: str) -> Dict:
         "prop": "extracts",
         "explaintext": True,
         "inprop": "url",
+    }
+
+
+def _coordinate_query_params(city: str) -> Dict:
+    return {
+        "action": "query",
+        "format": "json",
+        "titles": city,
+        "prop": "coordinates",
     }
 
 
@@ -97,6 +107,48 @@ def _insert_city_description_in_table(
                 )
 
 
+def cities_lat_lon(
+    conn: sqlite3.Connection, input_table: str, output_table: str
+) -> None:
+    """
+    Scrape Wikipedia for the same cities to get co-ordinates
+    """
+    conn.execute(
+        f"""
+        CREATE TABLE {output_table}(
+            city TEXT,
+            lat REAL,
+            lon REAL
+        )
+    """
+    )
+
+    with conn:
+        cursor = conn.cursor()
+
+        cursor.execute(f"SELECT city FROM {input_table}")
+        cities = cursor.fetchall()
+
+        for city in cities:
+            print(f"Querying co-ordinates for city: {city[0]}")
+            content_response = requests.get(
+                _WIKIPEDIA_URL, params=_coordinate_query_params(city)
+            )
+            city_coords_resp = CoordinatesQueryResponse.parse_obj(
+                content_response.json()
+            )
+
+            for _, page in city_coords_resp.query.pages.items():
+                if page.coordinates:
+                    # If we don't find co-ordinates don't put in table
+                    cursor.execute(
+                        f"INSERT INTO {output_table} (city, lat, lon) VALUES (?, ?, ?)",
+                        (city[0], page.coordinates[0].lat, page.coordinates[0].lon),
+                    )
+
+    conn.close()
+
+
 def cities_table(
     llm: ChatOpenAI,
     page_titles: List[str],
@@ -130,6 +182,12 @@ def cities_table(
 
 
 if __name__ == "__main__":
+    """
+    This script generates city description in the cities table
+    and lat lon in the cities_lat_lon table.
+
+    They need to be run only once.
+    """
     # Get all pages under the category Germany
     pages = parse_category_page()
 
@@ -137,3 +195,6 @@ if __name__ == "__main__":
     llm = _get_llm()
     conn = city_table_connection()
     cities_table(llm, pages, conn, table_name="cities")
+
+    conn = city_table_connection()
+    cities_lat_lon(conn, input_table="cities", output_table="cities_lat_lon")
