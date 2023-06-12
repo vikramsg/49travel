@@ -34,15 +34,16 @@ def _location(city_query: str) -> Optional[int]:
 
 
 def get_city_stops(conn: Connection, input_table: str, output_table: str) -> None:
-    conn.execute(
-        f"""CREATE TABLE IF NOT EXISTS {output_table}(
+    with conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""CREATE TABLE IF NOT EXISTS {output_table}(
             city TEXT,
             stop_id INTEGER
         )
         """
-    )
-    with conn:
-        cursor = conn.cursor()
+        )
+
         cursor.execute(f"SELECT city from {input_table}")
 
         cities = cursor.fetchall()
@@ -127,16 +128,18 @@ def _journey(origin: int, destination: int) -> Optional[JourneySummary]:
 def city_journeys(
     conn: Connection, origin_stop_id: int, input_table: str, output_table: str
 ) -> None:
-    conn.execute(
-        f"""CREATE TABLE {output_table}(
+    with conn:
+        cursor = conn.cursor()
+        cursor.execute(f"DROP TABLE IF EXISTS {output_table}")
+        cursor.execute(
+            f"""CREATE TABLE {output_table}(
             city TEXT,
             journey_time INT,
             stops INT
         )
         """
-    )
-    with conn:
-        cursor = conn.cursor()
+        )
+
         cursor.execute(f"SELECT city, stop_id from {input_table}")
 
         table_output = cursor.fetchall()
