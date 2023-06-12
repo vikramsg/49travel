@@ -13,9 +13,6 @@ help:
 	@echo "check - run static checks"
 	@echo "run - run game"
 
-test:
-	poetry run pytest -vv test
-
 check:
 	./static_checks.sh
 
