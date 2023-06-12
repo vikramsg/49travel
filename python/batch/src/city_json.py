@@ -1,8 +1,9 @@
 import json
 from sqlite3 import Connection
 
-from src.common import city_table_connection
 import click
+
+from src.common import city_table_connection
 
 
 def join_cities_journeys(
