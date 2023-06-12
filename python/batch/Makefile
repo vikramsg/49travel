@@ -26,3 +26,7 @@ install:
 city_journeys:
 	$(call REQUIRE,CITY)
 	poetry run python -m src.destinations --run-type=journeys_from_origin --city=$(CITY)
+	
+city_json: city_journeys
+	$(call REQUIRE,CITY)
+	poetry run python -m src.city_json --city=$(CITY)
