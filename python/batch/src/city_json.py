@@ -57,10 +57,9 @@ def destinations_json(
     with conn:
         cursor = conn.cursor()
 
-        cursor.execute(f"DROP TABLE IF EXISTS {destinations_table}")
         cursor.execute(
             f"""
-            SELECT city, url, journey_time, origin_stop, destination_stop, description
+            SELECT city, url, journey_time, stops, origin_stop, destination_stop, description
             FROM {destinations_table}
             """
         )
@@ -70,7 +69,6 @@ def destinations_json(
         while row is not None:
             (
                 city,
-                description,
                 url,
                 journey_time,
                 stops,

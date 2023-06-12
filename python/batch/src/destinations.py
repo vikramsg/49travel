@@ -162,8 +162,6 @@ def city_journeys(
                     ),
                 )
 
-    conn.close()
-
 
 @click.command()
 @click.option(
