@@ -24,7 +24,7 @@ def join_cities_journeys(
             SELECT {cities_table}.city as city,
             {cities_table}.description as description,
             {cities_table}.url as url,
-            {journeys_table}.journey as journey,
+            {journeys_table}.stops as stops,
             {journeys_table}.journey_time as journey_time
             FROM {cities_table}
             JOIN {journeys_table}
@@ -36,6 +36,7 @@ def join_cities_journeys(
             destinations.description as description,
             destinations.url as url,
             destinations.journey_time as journey_time,
+            destinations.stops as stops,
             {stops_table}.stop_id as destination_stop,
             (SELECT stop_id FROM {stops_table} WHERE city='{city}') as origin_stop
             FROM destinations
@@ -43,7 +44,7 @@ def join_cities_journeys(
             ON destinations.city = city_stops.city
             ORDER BY journey_time ASC
         )
-        SELECT city, description, url, journey_time, origin_stop, destination_stop FROM destinations_stops;
+        SELECT city, description, url, journey_time, stops, origin_stop, destination_stop FROM destinations_stops;
         """
     )
 
@@ -56,6 +57,7 @@ def destinations_json(
     with conn:
         cursor = conn.cursor()
 
+        cursor.execute(f"DROP TABLE IF EXISTS {destinations_table}")
         cursor.execute(
             f"""
             SELECT city, url, journey_time, origin_stop, destination_stop, description
@@ -66,12 +68,22 @@ def destinations_json(
         json_list = []
         row = cursor.fetchone()
         while row is not None:
-            city, url, journey_time, origin_stop, destination_stop, description = row
+            (
+                city,
+                description,
+                url,
+                journey_time,
+                stops,
+                origin_stop,
+                destination_stop,
+                description,
+            ) = row
             json_list.append(
                 {
                     "city": city,
                     "url": url,
                     "journey_time": journey_time,
+                    "stops": stops,
                     "origin_stop": origin_stop,
                     "destination_stop": destination_stop,
                     "description": description,

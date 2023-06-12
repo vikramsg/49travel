@@ -158,7 +158,7 @@ def city_journeys(
                     (
                         cities[it],
                         journey_summary.journey_time.total_seconds(),
-                        len(journey_summary.journey_info),
+                        len(journey_summary.journey_info) - 1,
                     ),
                 )
 
