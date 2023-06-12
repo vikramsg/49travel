@@ -1,8 +1,8 @@
-import json
 from datetime import datetime, timedelta
 from sqlite3 import Connection
 from typing import Optional
 
+import click
 import pydantic
 import requests
 
@@ -35,7 +35,7 @@ def _location(city_query: str) -> Optional[int]:
 
 def get_city_stops(conn: Connection, input_table: str, output_table: str) -> None:
     conn.execute(
-        f"""CREATE TABLE {output_table}(
+        f"""CREATE TABLE IF NOT EXISTS {output_table}(
             city TEXT,
             stop_id INTEGER
         )
@@ -122,14 +122,14 @@ def _journey(origin: int, destination: int) -> Optional[JourneySummary]:
         return None
 
 
-def hamburg_journeys(conn: Connection, input_table: str, output_table: str) -> None:
-    hamburg_stop_id = 8096009
-
+def city_journeys(
+    conn: Connection, origin_stop_id: int, input_table: str, output_table: str
+) -> None:
     conn.execute(
         f"""CREATE TABLE {output_table}(
             city TEXT,
-            journey TEXT,
-            journey_time INT
+            journey_time INT,
+            stops INT
         )
         """
     )
@@ -145,32 +145,58 @@ def hamburg_journeys(conn: Connection, input_table: str, output_table: str) -> N
             print(
                 f"Processing journey to city: {cities[it]} with stop id: {destination_stop_id}"
             )
-            journey_summary = _journey(hamburg_stop_id, destination_stop_id)
+            journey_summary = _journey(origin_stop_id, destination_stop_id)
 
             if journey_summary:
-                journey_summary_json = json.dumps(journey_summary.journey_info)
-
                 cursor.execute(
-                    f"INSERT INTO {output_table} (city, journey, journey_time) VALUES (?, ?, ?)",
+                    f"INSERT INTO {output_table} (city, journey_time, stops) VALUES (?, ?, ?)",
                     (
                         cities[it],
-                        journey_summary_json,
                         journey_summary.journey_time.total_seconds(),
+                        len(journey_summary.journey_info),
                     ),
                 )
 
     conn.close()
 
 
+@click.command()
+@click.option(
+    "--run-type",
+    type=click.Choice(["stops", "journeys_from_origin"]),
+    help="Whether to get stops or run journeys for an origin city.",
+    required=True,
+)
+@click.option(
+    "--city",
+    help="City to run for if we want to get journeys for a city",
+    required=False,
+)
+def run_city_journeys(run_type: str, city: str) -> None:
+    if run_type == "journeys_from_origin" and not city:
+        raise click.ClickException(
+            "When run type is 'journeys_from_origin', city must be provided"
+        )
+
+    conn = city_table_connection()
+    if run_type == "stops":
+        get_city_stops(conn, "cities", "city_stops")
+    elif run_type == "journeys_from_origin":
+        # First find the city in city_stops and get its stop id
+        # Then run journeys from that city and create table
+        cursor = conn.cursor()
+
+        cursor.execute(f"SELECT city, stop_id FROM city_stops WHERE city='{city}'")
+        city_row = cursor.fetchone()
+        cursor.close()
+        if not city_row:
+            raise click.ClickException(
+                "Invalid city. Are you sure about the city name?"
+            )
+        _, stop_id = city_row
+
+        city_journeys(conn, stop_id, "city_stops", f"{city}_journeys")
+
+
 if __name__ == "__main__":
-    conn = city_table_connection("city_stops")
-    get_city_stops(conn, "cities_lat_lon", "city_stops")
-
-    conn = city_table_connection("hamburg_journeys")
-    hamburg_journeys(conn, "city_stops", "hamburg_journeys")
-
-    # ToDo
-    # We don't really need lat lon at all!
-    # We should just save these as gists
-    # Actually just create another folder and save these files
-    # Helps when referencing in blog
+    run_city_journeys()
