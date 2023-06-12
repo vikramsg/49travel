@@ -73,6 +73,8 @@ def _journey(origin: int, destination: int) -> Optional[JourneySummary]:
         "&nationalExpress=false"
         "&suburban=false"
         "&subway=false"
+        # This is for Heligoland, but there could be incuded ferries as well
+        "&ferry=false"
         "&departure=2023-05-27T05:00"
     )
 
