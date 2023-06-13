@@ -1,13 +1,17 @@
+import time
 from datetime import datetime, timedelta
 from sqlite3 import Connection
-from typing import Optional
+from typing import List, Optional
 
 import click
 import pydantic
+import pyhafas
 import requests
+from pyhafas import HafasClient
+from pyhafas.profile import DBProfile
 
 from src.common import city_table_connection, session_with_retry
-from src.model import JourneyResponse, JourneySummary, Stop
+from src.model import JourneySummary, Stop
 
 
 def _location(city_query: str) -> Optional[int]:
@@ -62,66 +66,61 @@ def get_city_stops(conn: Connection, input_table: str, output_table: str) -> Non
     conn.close()
 
 
-def _journey(origin: int, destination: int) -> Optional[JourneySummary]:
-    url = (
-        "https://v6.db.transport.rest/journeys"
-        "?from="
-        f"{origin}"
-        "&to="
-        f"{destination}"
-        "&bus=false"
-        "&national=false"
-        "&nationalExpress=false"
-        "&suburban=false"
-        "&subway=false"
-        # This is for Heligoland, but there could be incuded ferries as well
-        "&ferry=false"
-        "&departure=2023-05-27T05:00"
+def _get_journeys(
+    client: HafasClient, origin: int, destination: int
+) -> List[pyhafas.types.fptf.Journey]:
+    time_val = datetime.strptime("2023-05-27T05:00", "%Y-%m-%dT%H:%M")
+    return client.journeys(  # type: ignore
+        origin=origin,
+        destination=destination,
+        date=time_val,
+        products={
+            "long_distance_express": False,
+            "long_distance": False,
+            "ferry": False,
+            "bus": False,
+            "suburban": False,
+            "subway": False,
+        },
     )
 
-    request_session = session_with_retry()
+
+def _journey(origin: int, destination: int) -> Optional[JourneySummary]:
+    client = HafasClient(DBProfile())
+
     try:
-        response = request_session.get(url, timeout=1)
-
-        journey_response = JourneyResponse.parse_obj(response.json())
-
-        journey_info = []
-        if journey_response.journeys:
-            min_journey_time = timedelta(days=1)
-            for journey in journey_response.journeys:
-                leg_summary = []
-                for leg in journey.legs:
-                    line_name = leg.line.name if leg.line else None
-                    leg_summary.append(
-                        (
-                            leg.origin.name,
-                            leg.plannedDeparture,
-                            leg.destination.name,
-                            leg.plannedArrival,
-                            line_name,
-                        )
-                    )
-                journey_departure_time = datetime.strptime(
-                    leg_summary[0][1], "%Y-%m-%dT%H:%M:%S%z"
-                )
-                journey_arrival_time = datetime.strptime(
-                    leg_summary[-1][3], "%Y-%m-%dT%H:%M:%S%z"
-                )
-
-                min_journey_time = min(
-                    min_journey_time, journey_arrival_time - journey_departure_time
-                )
-
-                journey_info.append(leg_summary)
-
-            return JourneySummary(
-                journey_time=min_journey_time, journey_info=journey_info
-            )
-        else:
+        try:
+            journeys = _get_journeys(client, origin, destination)
+        except TypeError as e:
+            print(f"Invalid journey. Error: {e.args[0]}. Skipping")
             return None
-    # Even with backoff, if it does not work, then we just ignore it
-    except requests.exceptions.ConnectionError:
-        print("Timeout occured. Returning None.")
+        except requests.exceptions.ConnectionError as e:
+            print(f"Connection reset. Error: {e.args[0]}. Waiting to try again.")
+            time.sleep(20)
+            print("Trying again")
+            journeys = _get_journeys(client, origin, destination)
+
+        min_journey_time = timedelta(days=10)
+        min_journey_legs = 100
+        for journey in journeys:
+            flag = 1
+            for leg in journey.legs:
+                if leg.name and "FLX" in leg.name:
+                    flag = 0
+
+            if journey.duration < min_journey_time and flag:
+                min_journey_time = journey.duration
+                min_journey_legs = len(journey.legs)
+
+        if min_journey_legs == 100:
+            return None
+
+        print(f"Journey time: {min_journey_time}, legs: {min_journey_legs}")
+        return JourneySummary(
+            journey_time=min_journey_time, journey_legs=min_journey_legs
+        )
+    except pyhafas.types.exceptions.JourneysArrivalDepartureTooNearError as e:
+        print(f"PyHafas raised an error. Error: {e.args[0]}. Skipping.")
         return None
 
 
@@ -150,17 +149,21 @@ def city_journeys(
             print(
                 f"Processing journey to city: {cities[it]} with stop id: {destination_stop_id}"
             )
-            journey_summary = _journey(origin_stop_id, destination_stop_id)
+            if origin_stop_id != destination_stop_id:
+                journey_summary = _journey(origin_stop_id, destination_stop_id)
 
-            if journey_summary:
-                cursor.execute(
-                    f"INSERT INTO {output_table} (city, journey_time, stops) VALUES (?, ?, ?)",
-                    (
-                        cities[it],
-                        journey_summary.journey_time.total_seconds(),
-                        len(journey_summary.journey_info) - 1,
-                    ),
-                )
+                if journey_summary:
+                    cursor.execute(
+                        f"INSERT INTO {output_table} (city, journey_time, stops) VALUES (?, ?, ?)",
+                        (
+                            cities[it],
+                            journey_summary.journey_time.total_seconds(),
+                            journey_summary.journey_legs - 1,
+                        ),
+                    )
+
+            # Rate limit the requests
+            time.sleep(1)
 
 
 @click.command()
