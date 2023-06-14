@@ -1122,6 +1122,22 @@ files = [
 ]
 
 [[package]]
+name = "pyhafas"
+version = "0.3.1"
+description = "Python client for HAFAS public transport APIs"
+category = "main"
+optional = false
+python-versions = "*"
+files = [
+    {file = "pyhafas-0.3.1-py3-none-any.whl", hash = "sha256:271624e36ec57595bc48b62fd6f23d21d180a1421267ca6c164d2a67620fe949"},
+    {file = "pyhafas-0.3.1.tar.gz", hash = "sha256:0a8790e0e3430e3deef5fdd122e5527fb0448675d9e7d2a663214fa6caa518f7"},
+]
+
+[package.dependencies]
+pytz = ">=2013.6"
+requests = ">=2.9,<3.0"
+
+[[package]]
 name = "python-dotenv"
 version = "1.0.0"
 description = "Read key-value pairs from a .env file and set them as environment variables"
@@ -1135,6 +1151,18 @@ files = [
 
 [package.extras]
 cli = ["click (>=5.0)"]
+
+[[package]]
+name = "pytz"
+version = "2023.3"
+description = "World timezone definitions, modern and historical"
+category = "main"
+optional = false
+python-versions = "*"
+files = [
+    {file = "pytz-2023.3-py2.py3-none-any.whl", hash = "sha256:a151b3abb88eda1d4e34a9814df37de2a80e301e68ba0fd856fb9b46bfbbbffb"},
+    {file = "pytz-2023.3.tar.gz", hash = "sha256:1d8ce29db189191fb55338ee6d0387d82ab59f3d00eac103412d64e0ebd0c588"},
+]
 
 [[package]]
 name = "pyyaml"
@@ -1671,4 +1699,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8.1,<3.11"
-content-hash = "2192cafee94db0fd62526ec80f6098cc309310949c28b0dfaba8601763f6e918"
+content-hash = "9195ae6578115ec6066538be7bd0b22af7703aaec787c918a36938e4ff17c632"

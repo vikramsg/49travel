@@ -12,8 +12,9 @@ const Home = () => {
         },
         {
             title: "Berlin",
-            text: "Coming soon!",
-            clickable: false,
+            text: "Find out all destinations you can reach from Berlin using only your 49 Euro ticket.",
+            link: "/origin/berlin",
+            clickable: true,
         },
         {
             title: "Munich",
@@ -43,8 +44,8 @@ const Home = () => {
                 {cards.map((card, index) => (
                     <Col key={index}>
                         <Link
-                            to={card.title === 'Hamburg' ? card.link : '#'}
-                            className={`text-decoration-none ${card.title === 'Hamburg' ? 'card-clickable' : ''}`}
+                            to={card.clickable === true ? card.link : '#'}
+                            className={`text-decoration-none ${card.clickable === true ? 'card-clickable' : ''}`}
                         >
                             <Card className={`h-100 ${card.clickable ? 'card-clickable' : ''}`}>
                                 <Card.Header><h5>{card.title}</h5></Card.Header>

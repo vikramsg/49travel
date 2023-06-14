@@ -2,9 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card } from 'react-bootstrap';
 import { formatDuration, intervalToDuration } from 'date-fns';
 
-import cardsData from '../data/hamburg.json';
-
-const Hamburg = () => {
+const CityPage = ({ cardsData }) => {
     const [cards, setCards] = useState(cardsData.cities);
     const [currentPage, setCurrentPage] = useState(30);
     const [showButton, setShowButton] = useState(true);
@@ -45,6 +43,7 @@ const Hamburg = () => {
                                 <Card.Text>
                                     Journey time is{' '}
                                     {formatDuration(intervalToDuration({ start: 0, end: card.journey_time * 1000 }))}
+                                    {' '}with {card.stops} {card.stops === 1 ? 'stop' : 'stops'}.
                                 </Card.Text>
                                 {card.expanded && (
                                     <>
@@ -91,4 +90,4 @@ const Hamburg = () => {
 
 
 
-export default Hamburg;
+export default CityPage;

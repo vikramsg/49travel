@@ -1,13 +1,17 @@
-import json
+import time
 from datetime import datetime, timedelta
 from sqlite3 import Connection
-from typing import Optional
+from typing import List, Optional
 
+import click
 import pydantic
+import pyhafas
 import requests
+from pyhafas import HafasClient
+from pyhafas.profile import DBProfile
 
 from src.common import city_table_connection, session_with_retry
-from src.model import JourneyResponse, JourneySummary, Stop
+from src.model import JourneySummary, Stop
 
 
 def _location(city_query: str) -> Optional[int]:
@@ -34,15 +38,16 @@ def _location(city_query: str) -> Optional[int]:
 
 
 def get_city_stops(conn: Connection, input_table: str, output_table: str) -> None:
-    conn.execute(
-        f"""CREATE TABLE {output_table}(
+    with conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""CREATE TABLE IF NOT EXISTS {output_table}(
             city TEXT,
             stop_id INTEGER
         )
         """
-    )
-    with conn:
-        cursor = conn.cursor()
+        )
+
         cursor.execute(f"SELECT city from {input_table}")
 
         cities = cursor.fetchall()
@@ -61,80 +66,95 @@ def get_city_stops(conn: Connection, input_table: str, output_table: str) -> Non
     conn.close()
 
 
-def _journey(origin: int, destination: int) -> Optional[JourneySummary]:
-    url = (
-        "https://v6.db.transport.rest/journeys"
-        "?from="
-        f"{origin}"
-        "&to="
-        f"{destination}"
-        "&bus=false"
-        "&national=false"
-        "&nationalExpress=false"
-        "&suburban=false"
-        "&subway=false"
-        "&departure=2023-05-27T05:00"
-    )
-
-    request_session = session_with_retry()
+def _get_journeys(
+    client: HafasClient, origin: int, destination: int
+) -> Optional[List[pyhafas.types.fptf.Journey]]:
+    time_val = datetime.strptime("2023-06-10T05:00", "%Y-%m-%dT%H:%M")
     try:
-        response = request_session.get(url, timeout=1)
-
-        journey_response = JourneyResponse.parse_obj(response.json())
-
-        journey_info = []
-        if journey_response.journeys:
-            min_journey_time = timedelta(days=1)
-            for journey in journey_response.journeys:
-                leg_summary = []
-                for leg in journey.legs:
-                    line_name = leg.line.name if leg.line else None
-                    leg_summary.append(
-                        (
-                            leg.origin.name,
-                            leg.plannedDeparture,
-                            leg.destination.name,
-                            leg.plannedArrival,
-                            line_name,
-                        )
-                    )
-                journey_departure_time = datetime.strptime(
-                    leg_summary[0][1], "%Y-%m-%dT%H:%M:%S%z"
-                )
-                journey_arrival_time = datetime.strptime(
-                    leg_summary[-1][3], "%Y-%m-%dT%H:%M:%S%z"
-                )
-
-                min_journey_time = min(
-                    min_journey_time, journey_arrival_time - journey_departure_time
-                )
-
-                journey_info.append(leg_summary)
-
-            return JourneySummary(
-                journey_time=min_journey_time, journey_info=journey_info
-            )
-        else:
-            return None
-    # Even with backoff, if it does not work, then we just ignore it
-    except requests.exceptions.ConnectionError:
-        print("Timeout occured. Returning None.")
+        return client.journeys(  # type: ignore
+            origin=origin,
+            destination=destination,
+            date=time_val,
+            products={
+                "long_distance_express": False,
+                "long_distance": False,
+                "ferry": False,
+                "bus": False,
+                "suburban": False,
+                "subway": False,
+            },
+        )
+    except TypeError as e:
+        print(f"Invalid journey. Error: {e.args[0]}. Skipping")
         return None
 
 
-def hamburg_journeys(conn: Connection, input_table: str, output_table: str) -> None:
-    hamburg_stop_id = 8096009
+def _journeys_with_error_handling(
+    client: HafasClient, origin: int, destination: int
+) -> Optional[List[pyhafas.types.fptf.Journey]]:
+    for i in range(4):
+        try:
+            journeys = _get_journeys(client, origin, destination)
+            return journeys
+        except requests.exceptions.ConnectionError as e:
+            print(f"Connection reset. Error: {e.args[0]}. Waiting to try again.")
+            time.sleep(2 * (i + 1) * 20)
+            print("Trying again")
+    return None
 
-    conn.execute(
-        f"""CREATE TABLE {output_table}(
-            city TEXT,
-            journey TEXT,
-            journey_time INT
-        )
-        """
-    )
+
+def _journey(origin: int, destination: int) -> Optional[JourneySummary]:
+    client = HafasClient(DBProfile())
+
+    try:
+        journeys = _journeys_with_error_handling(client, origin, destination)
+
+        if journeys:
+            min_journey_time = timedelta(days=10)
+            min_journey_legs = 100
+            for journey in journeys:
+                flag = 1
+                for leg in journey.legs:
+                    if leg.name and "FLX" in leg.name:
+                        flag = 0
+
+                if journey.duration < min_journey_time and flag:
+                    min_journey_time = journey.duration
+                    min_journey_legs = len(journey.legs)
+
+            if min_journey_legs == 100:
+                return None
+
+            print(f"Journey time: {min_journey_time}, legs: {min_journey_legs}")
+            return JourneySummary(
+                journey_time=min_journey_time, journey_legs=min_journey_legs
+            )
+        else:
+            print("No journey for this destination.")
+            return None
+    except pyhafas.types.exceptions.JourneysArrivalDepartureTooNearError as pe:
+        print(f"PyHafas raised an error. Error: {pe.args[0]}. Skipping.")
+        return None
+    except TypeError as te:
+        print(f"Something is wrong with the journeys. Error: {te.args[0]}. Skipping.")
+        return None
+
+
+def city_journeys(
+    conn: Connection, origin_stop_id: int, input_table: str, output_table: str
+) -> None:
     with conn:
         cursor = conn.cursor()
+        cursor.execute(f"DROP TABLE IF EXISTS {output_table}")
+        cursor.execute(
+            f"""CREATE TABLE {output_table}(
+            city TEXT,
+            journey_time INT,
+            stops INT
+        )
+        """
+        )
+
         cursor.execute(f"SELECT city, stop_id from {input_table}")
 
         table_output = cursor.fetchall()
@@ -145,32 +165,60 @@ def hamburg_journeys(conn: Connection, input_table: str, output_table: str) -> N
             print(
                 f"Processing journey to city: {cities[it]} with stop id: {destination_stop_id}"
             )
-            journey_summary = _journey(hamburg_stop_id, destination_stop_id)
+            if origin_stop_id != destination_stop_id:
+                journey_summary = _journey(origin_stop_id, destination_stop_id)
 
-            if journey_summary:
-                journey_summary_json = json.dumps(journey_summary.journey_info)
+                if journey_summary:
+                    cursor.execute(
+                        f"INSERT INTO {output_table} (city, journey_time, stops) VALUES (?, ?, ?)",
+                        (
+                            cities[it],
+                            journey_summary.journey_time.total_seconds(),
+                            journey_summary.journey_legs - 1,
+                        ),
+                    )
 
-                cursor.execute(
-                    f"INSERT INTO {output_table} (city, journey, journey_time) VALUES (?, ?, ?)",
-                    (
-                        cities[it],
-                        journey_summary_json,
-                        journey_summary.journey_time.total_seconds(),
-                    ),
-                )
+            # Rate limit the requests
+            time.sleep(1)
 
-    conn.close()
+
+@click.command()
+@click.option(
+    "--run-type",
+    type=click.Choice(["stops", "journeys_from_origin"]),
+    help="Whether to get stops or run journeys for an origin city.",
+    required=True,
+)
+@click.option(
+    "--city",
+    help="City to run for if we want to get journeys for a city",
+    required=False,
+)
+def run_city_journeys(run_type: str, city: str) -> None:
+    if run_type == "journeys_from_origin" and not city:
+        raise click.ClickException(
+            "When run type is 'journeys_from_origin', city must be provided"
+        )
+
+    conn = city_table_connection()
+    if run_type == "stops":
+        get_city_stops(conn, "cities", "city_stops")
+    elif run_type == "journeys_from_origin":
+        # First find the city in city_stops and get its stop id
+        # Then run journeys from that city and create table
+        cursor = conn.cursor()
+
+        cursor.execute(f"SELECT city, stop_id FROM city_stops WHERE city='{city}'")
+        city_row = cursor.fetchone()
+        cursor.close()
+        if not city_row:
+            raise click.ClickException(
+                "Invalid city. Are you sure about the city name?"
+            )
+        _, stop_id = city_row
+
+        city_journeys(conn, stop_id, "city_stops", f"{city}_journeys")
 
 
 if __name__ == "__main__":
-    conn = city_table_connection("city_stops")
-    get_city_stops(conn, "cities_lat_lon", "city_stops")
-
-    conn = city_table_connection("hamburg_journeys")
-    hamburg_journeys(conn, "city_stops", "hamburg_journeys")
-
-    # ToDo
-    # We don't really need lat lon at all!
-    # We should just save these as gists
-    # Actually just create another folder and save these files
-    # Helps when referencing in blog
+    run_city_journeys()
