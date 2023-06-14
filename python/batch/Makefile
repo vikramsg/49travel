@@ -23,7 +23,7 @@ install:
 	poetry install --no-root
 	poetry shell
 
-city_journeys:
+city_journeys: install
 	$(call REQUIRE,CITY)
 	poetry run python -m src.destinations --run-type=journeys_from_origin --city=$(CITY)
 	
