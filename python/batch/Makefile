@@ -11,7 +11,7 @@ help:
 	@echo "test - run unit tests"
 	@echo "lint - run linter and checks"
 	@echo "check - run static checks"
-	@echo "run - run game"
+	@echo "city_json - Get json for city. Requires CITY argument"
 
 check:
 	./static_checks.sh

@@ -68,59 +68,75 @@ def get_city_stops(conn: Connection, input_table: str, output_table: str) -> Non
 
 def _get_journeys(
     client: HafasClient, origin: int, destination: int
-) -> List[pyhafas.types.fptf.Journey]:
-    time_val = datetime.strptime("2023-05-27T05:00", "%Y-%m-%dT%H:%M")
-    return client.journeys(  # type: ignore
-        origin=origin,
-        destination=destination,
-        date=time_val,
-        products={
-            "long_distance_express": False,
-            "long_distance": False,
-            "ferry": False,
-            "bus": False,
-            "suburban": False,
-            "subway": False,
-        },
-    )
+) -> Optional[List[pyhafas.types.fptf.Journey]]:
+    time_val = datetime.strptime("2023-06-10T05:00", "%Y-%m-%dT%H:%M")
+    try:
+        return client.journeys(  # type: ignore
+            origin=origin,
+            destination=destination,
+            date=time_val,
+            products={
+                "long_distance_express": False,
+                "long_distance": False,
+                "ferry": False,
+                "bus": False,
+                "suburban": False,
+                "subway": False,
+            },
+        )
+    except TypeError as e:
+        print(f"Invalid journey. Error: {e.args[0]}. Skipping")
+        return None
+
+
+def _journeys_with_error_handling(
+    client: HafasClient, origin: int, destination: int
+) -> Optional[List[pyhafas.types.fptf.Journey]]:
+    for i in range(4):
+        try:
+            journeys = _get_journeys(client, origin, destination)
+            return journeys
+        except requests.exceptions.ConnectionError as e:
+            print(f"Connection reset. Error: {e.args[0]}. Waiting to try again.")
+            time.sleep(2 * (i + 1) * 20)
+            print("Trying again")
+    return None
 
 
 def _journey(origin: int, destination: int) -> Optional[JourneySummary]:
     client = HafasClient(DBProfile())
 
     try:
-        try:
-            journeys = _get_journeys(client, origin, destination)
-        except TypeError as e:
-            print(f"Invalid journey. Error: {e.args[0]}. Skipping")
+        journeys = _journeys_with_error_handling(client, origin, destination)
+
+        if journeys:
+            min_journey_time = timedelta(days=10)
+            min_journey_legs = 100
+            for journey in journeys:
+                flag = 1
+                for leg in journey.legs:
+                    if leg.name and "FLX" in leg.name:
+                        flag = 0
+
+                if journey.duration < min_journey_time and flag:
+                    min_journey_time = journey.duration
+                    min_journey_legs = len(journey.legs)
+
+            if min_journey_legs == 100:
+                return None
+
+            print(f"Journey time: {min_journey_time}, legs: {min_journey_legs}")
+            return JourneySummary(
+                journey_time=min_journey_time, journey_legs=min_journey_legs
+            )
+        else:
+            print("No journey for this destination.")
             return None
-        except requests.exceptions.ConnectionError as e:
-            print(f"Connection reset. Error: {e.args[0]}. Waiting to try again.")
-            time.sleep(20)
-            print("Trying again")
-            journeys = _get_journeys(client, origin, destination)
-
-        min_journey_time = timedelta(days=10)
-        min_journey_legs = 100
-        for journey in journeys:
-            flag = 1
-            for leg in journey.legs:
-                if leg.name and "FLX" in leg.name:
-                    flag = 0
-
-            if journey.duration < min_journey_time and flag:
-                min_journey_time = journey.duration
-                min_journey_legs = len(journey.legs)
-
-        if min_journey_legs == 100:
-            return None
-
-        print(f"Journey time: {min_journey_time}, legs: {min_journey_legs}")
-        return JourneySummary(
-            journey_time=min_journey_time, journey_legs=min_journey_legs
-        )
-    except pyhafas.types.exceptions.JourneysArrivalDepartureTooNearError as e:
-        print(f"PyHafas raised an error. Error: {e.args[0]}. Skipping.")
+    except pyhafas.types.exceptions.JourneysArrivalDepartureTooNearError as pe:
+        print(f"PyHafas raised an error. Error: {pe.args[0]}. Skipping.")
+        return None
+    except TypeError as te:
+        print(f"Something is wrong with the journeys. Error: {te.args[0]}. Skipping.")
         return None
 
 
