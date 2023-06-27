@@ -68,7 +68,7 @@ def get_city_stops(conn: Connection, input_table: str, output_table: str) -> Non
 def _get_journeys(
     client: HafasClient, origin: int, destination: int
 ) -> Optional[List[pyhafas.types.fptf.Journey]]:
-    time_val = datetime.strptime("2023-06-10T05:00", "%Y-%m-%dT%H:%M")
+    time_val = datetime.strptime("2023-06-30T10:00", "%Y-%m-%dT%H:%M")
     try:
         return client.journeys(  # type: ignore
             origin=origin,
