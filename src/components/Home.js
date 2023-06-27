@@ -18,23 +18,23 @@ const Home = () => {
         },
         {
             title: "Munich",
-            text: "Coming soon!",
-            clickable: false,
+            text: "Find out all destinations you can reach from Munich using only your 49 Euro ticket.",
+            clickable: true,
         },
         {
             title: "Frankfurt",
-            text: "Coming soon!",
-            clickable: false,
+            text: "Find out all destinations you can reach from Frankfurt using only your 49 Euro ticket.",
+            clickable: true,
         },
         {
             title: "Cologne",
-            text: "Coming soon!",
-            clickable: false,
+            text: "Find out all destinations you can reach from Cologne using only your 49 Euro ticket.",
+            clickable: true,
         },
         {
             title: "Stuttgart",
-            text: "Coming soon!",
-            clickable: false,
+            text: "Find out all destinations you can reach from Stuttgart using only your 49 Euro ticket.",
+            clickable: true,
         }
     ];
 
