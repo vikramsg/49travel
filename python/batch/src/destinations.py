@@ -89,25 +89,11 @@ def _get_journeys(
         return None
 
 
-def _journeys_with_error_handling(
-    client: HafasClient, origin: int, destination: int
-) -> Optional[List[pyhafas.types.fptf.Journey]]:
-    for i in range(4):
-        try:
-            journeys = _get_journeys(client, origin, destination)
-            return journeys
-        except requests.exceptions.ConnectionError as e:
-            print(f"Connection reset. Error: {e.args[0]}. Waiting to try again.")
-            time.sleep(2 * (i + 1) * 20)
-            print("Trying again")
-    return None
-
-
 def _journey(origin: int, destination: int) -> Optional[JourneySummary]:
     client = HafasClient(DBRetryProfile())
 
     try:
-        journeys = _journeys_with_error_handling(client, origin, destination)
+        journeys = _get_journeys(client, origin, destination)
 
         if journeys:
             min_journey_time = timedelta(days=10)

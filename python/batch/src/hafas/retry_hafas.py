@@ -87,7 +87,7 @@ class DBRetryRequestHelper(BaseRequestHelper):
         data.update(self.requestBody)
         data = json.dumps(data)  # type: ignore
 
-        print("Requesting")
+        print("Requesting connection using requests")
         res = requests.post(
             self.url_formatter(data),
             data=data,
