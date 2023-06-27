@@ -35,6 +35,7 @@ def test_destinations_json(city_table_connection: Connection) -> None:
         }
 
 
+# FIXME: Incomplete test
 def test_happy_path_city_exists() -> None:
     # Given
     output_file = Path(".").resolve() / "test" / "data" / "city.json"

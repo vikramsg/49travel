@@ -8,9 +8,9 @@ import pydantic
 import pyhafas
 import requests
 from pyhafas import HafasClient
-from pyhafas.profile import DBProfile
 
 from src.common import city_table_connection, session_with_retry
+from src.hafas.retry_hafas import DBRetryProfile
 from src.model import JourneySummary, Stop
 
 
@@ -104,7 +104,7 @@ def _journeys_with_error_handling(
 
 
 def _journey(origin: int, destination: int) -> Optional[JourneySummary]:
-    client = HafasClient(DBProfile())
+    client = HafasClient(DBRetryProfile())
 
     try:
         journeys = _journeys_with_error_handling(client, origin, destination)
@@ -179,7 +179,7 @@ def city_journeys(
                     )
 
             # Rate limit the requests
-            time.sleep(1)
+            # time.sleep(1)
 
 
 @click.command()
