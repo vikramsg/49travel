@@ -6,7 +6,6 @@ from typing import List, Optional
 import click
 import pydantic
 import pyhafas
-import requests
 from pyhafas import HafasClient
 
 from src.common import city_table_connection, session_with_retry
