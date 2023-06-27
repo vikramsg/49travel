@@ -6,11 +6,10 @@ from typing import List, Optional
 import click
 import pydantic
 import pyhafas
-import requests
 from pyhafas import HafasClient
-from pyhafas.profile import DBProfile
 
 from src.common import city_table_connection, session_with_retry
+from src.hafas.retry_hafas import DBRetryProfile
 from src.model import JourneySummary, Stop
 
 
@@ -69,7 +68,7 @@ def get_city_stops(conn: Connection, input_table: str, output_table: str) -> Non
 def _get_journeys(
     client: HafasClient, origin: int, destination: int
 ) -> Optional[List[pyhafas.types.fptf.Journey]]:
-    time_val = datetime.strptime("2023-06-10T05:00", "%Y-%m-%dT%H:%M")
+    time_val = datetime.strptime("2023-06-30T10:00", "%Y-%m-%dT%H:%M")
     try:
         return client.journeys(  # type: ignore
             origin=origin,
@@ -89,25 +88,11 @@ def _get_journeys(
         return None
 
 
-def _journeys_with_error_handling(
-    client: HafasClient, origin: int, destination: int
-) -> Optional[List[pyhafas.types.fptf.Journey]]:
-    for i in range(4):
-        try:
-            journeys = _get_journeys(client, origin, destination)
-            return journeys
-        except requests.exceptions.ConnectionError as e:
-            print(f"Connection reset. Error: {e.args[0]}. Waiting to try again.")
-            time.sleep(2 * (i + 1) * 20)
-            print("Trying again")
-    return None
-
-
 def _journey(origin: int, destination: int) -> Optional[JourneySummary]:
-    client = HafasClient(DBProfile())
+    client = HafasClient(DBRetryProfile())
 
     try:
-        journeys = _journeys_with_error_handling(client, origin, destination)
+        journeys = _get_journeys(client, origin, destination)
 
         if journeys:
             min_journey_time = timedelta(days=10)
@@ -179,7 +164,7 @@ def city_journeys(
                     )
 
             # Rate limit the requests
-            time.sleep(1)
+            # time.sleep(1)
 
 
 @click.command()
