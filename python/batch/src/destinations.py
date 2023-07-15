@@ -14,10 +14,6 @@ from src.model import JourneySummary
 def _location(city_query: str) -> int:
     """
     Returns stop id for the given city
-
-    The transport API has weird issues
-    1. It only unblocks after timeout is reached
-    2. It blocks if query params are used as params instead of in url
     """
     profile = DBProfile()
     profile.activate_retry()
