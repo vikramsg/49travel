@@ -27,10 +27,18 @@ def test_run_city_stops(city_table_connection: sqlite3.Connection):
 
     assert result.exit_code == 0
     assert city_stops == [
+        ("Bad Doberan", 8010016),
+        ("Bad Kissingen", 8000714),
         ("Berlin", 8011160),
         ("Cologne", 8096022),
+        ("Dernau", 8001417),
+        ("Erding", 8001825),
         ("Hamburg", 8096009),
         ("Munich", 8000261),
+        ("Nuremberg", 8096025),
+        ("Pfullendorf", 8070630),
+        ("Schwabenheim", 530068),
+        ("Zeitz", 8010390),
     ]
 
 
@@ -45,7 +53,11 @@ def city_table_connection() -> Any:
     cursor.execute(
         """INSERT INTO cities
             ('city')
-            VALUES ('Hamburg'), ('Berlin'), ('Munich'), ('Cologne')"""
+            VALUES 
+            ('Hamburg'), ('Berlin'), ('Munich'), ('Cologne'),
+            ('Nuremberg'), ('Bad Kissingen'), ('Schwabenheim'), ('Dernau'),
+            ('Erding'), ('Pfullendorf'), ('Bad Doberan'), ('Zeitz')
+            """
     )
     cursor.execute("DROP TABLE IF EXISTS city_stops")
     cursor.close()

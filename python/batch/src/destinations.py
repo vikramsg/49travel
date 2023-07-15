@@ -1,16 +1,15 @@
-import time
 from datetime import datetime, timedelta
 from sqlite3 import Connection
 from typing import List, Optional
 
 import click
-import pydantic
 import pyhafas
 from pyhafas import HafasClient
+from pyhafas.profile import DBProfile
 
-from src.common import city_table_connection, session_with_retry
+from src.common import city_table_connection
 from src.hafas.retry_hafas import DBRetryProfile
-from src.model import JourneySummary, Stop
+from src.model import JourneySummary
 
 
 def _location(city_query: str) -> Optional[int]:
@@ -21,19 +20,11 @@ def _location(city_query: str) -> Optional[int]:
     1. It only unblocks after timeout is reached
     2. It blocks if query params are used as params instead of in url
     """
-    location_url = (
-        f"https://v6.db.transport.rest/locations?query={city_query}&results=1"
-    )
-    request_session = session_with_retry()
-    location_response = request_session.get(location_url, timeout=1)
+    profile = DBProfile()
+    profile.activate_retry()
+    client = HafasClient(profile)
 
-    try:
-        stop_response = Stop.parse_obj(location_response.json()[0])
-    except pydantic.error_wrappers.ValidationError:
-        print(f"Could not resolve {city_query}. Skipping.")
-        return None
-
-    return stop_response.id
+    return client.locations(term=city_query)[0].id
 
 
 def get_city_stops(conn: Connection, input_table: str, output_table: str) -> None:
