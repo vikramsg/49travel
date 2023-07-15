@@ -8,7 +8,6 @@ from pyhafas import HafasClient
 from pyhafas.profile import DBProfile
 
 from src.common import city_table_connection
-from src.hafas.retry_hafas import DBRetryProfile
 from src.model import JourneySummary
 
 
@@ -78,7 +77,9 @@ def _get_journeys(
 
 
 def _journey(origin: int, destination: int) -> Optional[JourneySummary]:
-    client = HafasClient(DBRetryProfile())
+    profile = DBProfile()
+    profile.activate_retry()
+    client = HafasClient(profile)
 
     try:
         journeys = _get_journeys(client, origin, destination)
