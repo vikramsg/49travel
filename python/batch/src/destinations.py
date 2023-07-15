@@ -62,8 +62,6 @@ def get_city_stops(conn: Connection, input_table: str, output_table: str) -> Non
                     (city[0], stop_id),
                 )
 
-    conn.close()
-
 
 def _get_journeys(
     client: HafasClient, origin: int, destination: int
@@ -163,9 +161,6 @@ def city_journeys(
                         ),
                     )
 
-            # Rate limit the requests
-            # time.sleep(1)
-
 
 @click.command()
 @click.option(
@@ -179,13 +174,14 @@ def city_journeys(
     help="City to run for if we want to get journeys for a city",
     required=False,
 )
-def run_city_journeys(run_type: str, city: str) -> None:
+@click.pass_context
+def run_city_journeys(ctx: click.Context, run_type: str, city: str) -> None:
     if run_type == "journeys_from_origin" and not city:
         raise click.ClickException(
             "When run type is 'journeys_from_origin', city must be provided"
         )
 
-    conn = city_table_connection()
+    conn = ctx.obj["conn"]
     if run_type == "stops":
         get_city_stops(conn, "cities", "city_stops")
     elif run_type == "journeys_from_origin":
@@ -206,4 +202,6 @@ def run_city_journeys(run_type: str, city: str) -> None:
 
 
 if __name__ == "__main__":
-    run_city_journeys()
+    conn = city_table_connection()
+    # The argument name has to be obj for injection
+    run_city_journeys(obj={"conn": conn})
