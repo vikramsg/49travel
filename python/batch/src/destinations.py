@@ -12,7 +12,7 @@ from src.hafas.retry_hafas import DBRetryProfile
 from src.model import JourneySummary
 
 
-def _location(city_query: str) -> Optional[int]:
+def _location(city_query: str) -> int:
     """
     Returns stop id for the given city
 
@@ -24,7 +24,7 @@ def _location(city_query: str) -> Optional[int]:
     profile.activate_retry()
     client = HafasClient(profile)
 
-    return client.locations(term=city_query)[0].id
+    return int(client.locations(term=city_query)[0].id)
 
 
 def get_city_stops(conn: Connection, input_table: str, output_table: str) -> None:

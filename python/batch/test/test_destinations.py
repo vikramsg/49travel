@@ -1,13 +1,14 @@
-from pathlib import Path
 import sqlite3
+from pathlib import Path
 from typing import Any
-from click import testing as click_testing
+
 import pytest
+from click import testing as click_testing
 
 from src.destinations import run_city_journeys
 
 
-def test_run_city_stops(city_table_connection: sqlite3.Connection):
+def test_run_city_stops(city_table_connection: sqlite3.Connection) -> None:
     # Given
     test_runner = click_testing.CliRunner()
 
@@ -53,7 +54,7 @@ def city_table_connection() -> Any:
     cursor.execute(
         """INSERT INTO cities
             ('city')
-            VALUES 
+            VALUES
             ('Hamburg'), ('Berlin'), ('Munich'), ('Cologne'),
             ('Nuremberg'), ('Bad Kissingen'), ('Schwabenheim'), ('Dernau'),
             ('Erding'), ('Pfullendorf'), ('Bad Doberan'), ('Zeitz')
