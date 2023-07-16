@@ -33,7 +33,7 @@ jobs:
 
       - name: Static checks 
         working-directory: python/batch 
-        run: ./static_checks.sh 
+        run: poetry run ./static_checks.sh 
 
       - name: Run pytest
         working-directory: python/batch 
