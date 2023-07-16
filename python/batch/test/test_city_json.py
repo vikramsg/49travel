@@ -75,10 +75,13 @@ def city_table_connection() -> Any:
             VALUES ('New York', 'https://www.example.com', 1100, 5, 'Grand Central', 'Penn Station',
            'A journey from Grand Central to Penn Station')"""
     )
-    cursor.execute("DROP TABLE IF EXISTS destinations")
     cursor.close()
 
     yield conn
+
+    cursor = conn.cursor()
+    cursor.execute("DROP TABLE IF EXISTS destinations")
+    cursor.close()
 
     conn.close()
 
