@@ -193,3 +193,4 @@ if __name__ == "__main__":
     conn = city_table_connection()
     # The argument name has to be obj for injection
     run_city_journeys(obj={"conn": conn})
+    conn.close()

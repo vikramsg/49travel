@@ -120,3 +120,4 @@ if __name__ == "__main__":
     conn = city_table_connection()
     output_file_path = Path(__file__).resolve().parent.parent / "data"
     get_city_json(obj={"conn": conn, "output_file_path": output_file_path})
+    conn.close()
