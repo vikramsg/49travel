@@ -146,8 +146,6 @@ def cities_lat_lon(
                         (city[0], page.coordinates[0].lat, page.coordinates[0].lon),
                     )
 
-    conn.close()
-
 
 def cities_table(
     llm: ChatOpenAI,
@@ -162,23 +160,21 @@ def cities_table(
     over to ChatGPT
     """
 
-    conn.execute(
-        f"""
-        CREATE TABLE IF NOT EXISTS {table_name}(
-            city TEXT,
-            description TEXT,
-            url TEXT
+    with conn:
+        cursor = conn.cursor()
+
+        cursor.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {table_name}(
+                city TEXT,
+                description TEXT,
+                url TEXT
+            )
+        """
         )
-    """
-    )
 
-    cursor = conn.cursor()
-
-    for city in page_titles:
-        _insert_city_description_in_table(llm, cursor, city, table_name)
-        conn.commit()
-
-    conn.close()
+        for city in page_titles:
+            _insert_city_description_in_table(llm, cursor, city, table_name)
 
 
 if __name__ == "__main__":
@@ -196,5 +192,5 @@ if __name__ == "__main__":
     conn = city_table_connection()
     cities_table(llm, pages, conn, table_name="cities")
 
-    conn = city_table_connection()
     cities_lat_lon(conn, input_table="cities", output_table="cities_lat_lon")
+    conn.close()
