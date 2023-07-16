@@ -3,9 +3,9 @@ import sqlite3
 from pathlib import Path
 from sqlite3 import Connection
 from typing import Any
-from click import testing as click_testing
 
 import pytest
+from click import testing as click_testing
 
 from src.city_json import destinations_json, get_city_json
 

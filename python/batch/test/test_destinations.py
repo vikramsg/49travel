@@ -112,7 +112,7 @@ def city_stops_table_connection() -> Any:
     cursor.execute("DROP TABLE IF EXISTS city_stops")
     cursor.execute("""CREATE TABLE city_stops (city TEXT, stop_id INTEGER)""")
     cursor.execute(
-        """INSERT INTO city_stops 
+        """INSERT INTO city_stops
             ('city', 'stop_id')
             VALUES
             ('Bad Doberan', 8010016),
