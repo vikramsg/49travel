@@ -1,39 +1,25 @@
-import time
 from datetime import datetime, timedelta
 from sqlite3 import Connection
 from typing import List, Optional
 
 import click
-import pydantic
 import pyhafas
 from pyhafas import HafasClient
+from pyhafas.profile import DBProfile
 
-from src.common import city_table_connection, session_with_retry
-from src.hafas.retry_hafas import DBRetryProfile
-from src.model import JourneySummary, Stop
+from src.common import city_table_connection
+from src.model import JourneySummary
 
 
-def _location(city_query: str) -> Optional[int]:
+def _location(city_query: str) -> int:
     """
     Returns stop id for the given city
-
-    The transport API has weird issues
-    1. It only unblocks after timeout is reached
-    2. It blocks if query params are used as params instead of in url
     """
-    location_url = (
-        f"https://v6.db.transport.rest/locations?query={city_query}&results=1"
-    )
-    request_session = session_with_retry()
-    location_response = request_session.get(location_url, timeout=1)
+    profile = DBProfile()
+    profile.activate_retry()
+    client = HafasClient(profile)
 
-    try:
-        stop_response = Stop.parse_obj(location_response.json()[0])
-    except pydantic.error_wrappers.ValidationError:
-        print(f"Could not resolve {city_query}. Skipping.")
-        return None
-
-    return stop_response.id
+    return int(client.locations(term=city_query)[0].id)
 
 
 def get_city_stops(conn: Connection, input_table: str, output_table: str) -> None:
@@ -62,8 +48,6 @@ def get_city_stops(conn: Connection, input_table: str, output_table: str) -> Non
                     (city[0], stop_id),
                 )
 
-    conn.close()
-
 
 def _get_journeys(
     client: HafasClient, origin: int, destination: int
@@ -89,7 +73,9 @@ def _get_journeys(
 
 
 def _journey(origin: int, destination: int) -> Optional[JourneySummary]:
-    client = HafasClient(DBRetryProfile())
+    profile = DBProfile()
+    profile.activate_retry()
+    client = HafasClient(profile)
 
     try:
         journeys = _get_journeys(client, origin, destination)
@@ -163,9 +149,6 @@ def city_journeys(
                         ),
                     )
 
-            # Rate limit the requests
-            # time.sleep(1)
-
 
 @click.command()
 @click.option(
@@ -179,13 +162,14 @@ def city_journeys(
     help="City to run for if we want to get journeys for a city",
     required=False,
 )
-def run_city_journeys(run_type: str, city: str) -> None:
+@click.pass_context
+def run_city_journeys(ctx: click.Context, run_type: str, city: str) -> None:
     if run_type == "journeys_from_origin" and not city:
         raise click.ClickException(
             "When run type is 'journeys_from_origin', city must be provided"
         )
 
-    conn = city_table_connection()
+    conn = ctx.obj["conn"]
     if run_type == "stops":
         get_city_stops(conn, "cities", "city_stops")
     elif run_type == "journeys_from_origin":
@@ -206,4 +190,7 @@ def run_city_journeys(run_type: str, city: str) -> None:
 
 
 if __name__ == "__main__":
-    run_city_journeys()
+    conn = city_table_connection()
+    # The argument name has to be obj for injection
+    run_city_journeys(obj={"conn": conn})
+    conn.close()

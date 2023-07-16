@@ -1166,14 +1166,14 @@ files = [
 
 [[package]]
 name = "pyhafas"
-version = "0.3.1"
+version = "0.4.0"
 description = "Python client for HAFAS public transport APIs"
 category = "main"
 optional = false
 python-versions = "*"
 files = [
-    {file = "pyhafas-0.3.1-py3-none-any.whl", hash = "sha256:271624e36ec57595bc48b62fd6f23d21d180a1421267ca6c164d2a67620fe949"},
-    {file = "pyhafas-0.3.1.tar.gz", hash = "sha256:0a8790e0e3430e3deef5fdd122e5527fb0448675d9e7d2a663214fa6caa518f7"},
+    {file = "pyhafas-0.4.0-py3-none-any.whl", hash = "sha256:9bf99aa66026c1e6dce21d18ce7cd85c1b5ef07e4f8ade2eb784f3d85a272506"},
+    {file = "pyhafas-0.4.0.tar.gz", hash = "sha256:cb48948a875a779d2147616a7588020dcd186d1197a40a3b0044d4f00a95a022"},
 ]
 
 [package.dependencies]
@@ -1778,4 +1778,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8.1,<3.11"
-content-hash = "0a5888045d20930e04788e23df3e288e8987566db3464239cd52f996b3a77a7a"
+content-hash = "ee50725e2c283afac041e97bb4e5bcc48d69d4b4e283949dcfbc486380fc5681"
