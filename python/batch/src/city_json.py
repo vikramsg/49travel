@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from sqlite3 import Connection
 
 import click
@@ -14,41 +15,41 @@ def join_cities_journeys(
     stops_table: str,
     joined_table: str,
 ) -> None:
-    conn.execute(f"DROP TABLE IF EXISTS {joined_table}")
+    with conn:
+        cursor = conn.cursor()
+        cursor.execute(f"DROP TABLE IF EXISTS {joined_table}")
 
-    conn.execute(
-        f"""
-        CREATE TABLE {joined_table} AS
-        WITH destinations AS
-        (
-            SELECT {cities_table}.city as city,
-            {cities_table}.description as description,
-            {cities_table}.url as url,
-            {journeys_table}.stops as stops,
-            {journeys_table}.journey_time as journey_time
-            FROM {cities_table}
-            JOIN {journeys_table}
-            ON {cities_table}.city = {journeys_table}.city
-        ),
-        destinations_stops AS
-        (
-            SELECT destinations.city as city,
-            destinations.description as description,
-            destinations.url as url,
-            destinations.journey_time as journey_time,
-            destinations.stops as stops,
-            {stops_table}.stop_id as destination_stop,
-            (SELECT stop_id FROM {stops_table} WHERE city='{city}') as origin_stop
-            FROM destinations
-            JOIN {stops_table}
-            ON destinations.city = city_stops.city
-            ORDER BY journey_time ASC
+        cursor.execute(
+            f"""
+            CREATE TABLE {joined_table} AS
+            WITH destinations AS
+            (
+                SELECT {cities_table}.city as city,
+                {cities_table}.description as description,
+                {cities_table}.url as url,
+                {journeys_table}.stops as stops,
+                {journeys_table}.journey_time as journey_time
+                FROM {cities_table}
+                JOIN {journeys_table}
+                ON {cities_table}.city = {journeys_table}.city
+            ),
+            destinations_stops AS
+            (
+                SELECT destinations.city as city,
+                destinations.description as description,
+                destinations.url as url,
+                destinations.journey_time as journey_time,
+                destinations.stops as stops,
+                {stops_table}.stop_id as destination_stop,
+                (SELECT stop_id FROM {stops_table} WHERE city='{city}') as origin_stop
+                FROM destinations
+                JOIN {stops_table}
+                ON destinations.city = city_stops.city
+                ORDER BY journey_time ASC
+            )
+            SELECT city, description, url, journey_time, stops, origin_stop, destination_stop FROM destinations_stops;
+            """
         )
-        SELECT city, description, url, journey_time, stops, origin_stop, destination_stop FROM destinations_stops;
-        """
-    )
-
-    conn.close()
 
 
 def destinations_json(
@@ -98,21 +99,24 @@ def destinations_json(
 @click.option(
     "--city", help="City for which output json has to be created", required=True
 )
-def get_city_json(city: str) -> None:
+@click.pass_context
+def get_city_json(ctx: click.Context, city: str) -> None:
     cities_table = "cities"
     journeys_table = f"{city}_journeys"
     stops_table = "city_stops"
     joined_table = f"{city}_destinations"
 
-    conn = city_table_connection()
+    conn = ctx.obj["conn"]
     join_cities_journeys(
         conn, city, cities_table, journeys_table, stops_table, joined_table
     )
 
-    output_file = f"data/{city.lower()}.json"
-    conn = city_table_connection()
+    output_file_path = ctx.obj["output_file_path"]
+    output_file = f"{output_file_path}/{city.lower()}.json"
     destinations_json(conn, joined_table, output_file)
 
 
 if __name__ == "__main__":
-    get_city_json()
+    conn = city_table_connection()
+    output_file_path = Path(__file__).resolve().parent.parent / "data"
+    get_city_json(obj={"conn": conn, "output_file_path": output_file_path})
