@@ -27,6 +27,7 @@ black = "^23.3.0"
 types-requests = "^2.30.0.0"
 pytest = "^7.3.2"
 types-pytz = "^2023.3.0.0"
+pytest-mock = "^3.11.1"
 
 
 [tool.isort]
