@@ -23,6 +23,13 @@ const Home = () => {
             clickable: true,
         },
         {
+            title: "Düsseldorf",
+            text: "Find out all destinations you can reach from Düsseldorf using only your 49 Euro ticket.",
+            link: "/origin/dusseldorf",
+            clickable: true,
+        },
+
+        {
             title: "Frankfurt",
             text: "Find out all destinations you can reach from Frankfurt using only your 49 Euro ticket.",
             link: "/origin/frankfurt",
