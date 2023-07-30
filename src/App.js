@@ -12,6 +12,7 @@ import munichData from './data/munich.json';
 import cologneData from './data/cologne.json';
 import stuttgartData from './data/stuttgart.json';
 import frankfurtData from './data/frankfurt.json';
+import dusseldorfData from './data/düsseldorf.json';
 
 
 const App = () => {
@@ -25,6 +26,7 @@ const App = () => {
           <Route path="/origin/berlin" element={<CityPage cardsData={berlinData} />} />
           <Route path="/origin/munich" element={<CityPage cardsData={munichData} />} />
           <Route path="/origin/cologne" element={<CityPage cardsData={cologneData} />} />
+          <Route path="/origin/dusseldorf" element={<CityPage cardsData={dusseldorfData} />} />
           <Route path="/origin/stuttgart" element={<CityPage cardsData={stuttgartData} />} />
           <Route path="/origin/frankfurt" element={<CityPage cardsData={frankfurtData} />} />
           <Route path="/about" element={<About />} />

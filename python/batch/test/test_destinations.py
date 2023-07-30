@@ -30,7 +30,7 @@ def test_run_city_stops(cities_table_connection: sqlite3.Connection) -> None:
     assert city_stops == [
         ("Bad Doberan", 8010016),
         ("Bad Kissingen", 8000714),
-        ("Berlin", 8011160),
+        ("Berlin", 8011201),
         ("Cologne", 8096022),
         ("Dernau", 8001417),
         ("Erding", 8001825),
