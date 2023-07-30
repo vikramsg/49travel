@@ -14,7 +14,7 @@ def test_parse_category_page() -> None:
     pages = parse_category_page(category=category)
 
     # Then
-    assert len(pages) == 111
+    assert len(pages) == 112
 
     assert all(
         item in pages for item in ["Berchtesgaden", "Munich", "Dachau", "Nuremberg"]
