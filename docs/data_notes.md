@@ -67,20 +67,38 @@ A place is in `city.parquet` when all of the following hold.
 
 Together that is **4,922** places.
 
+That is not a count of separate towns. GeoNames gives some city districts a
+plain-city feature code, and their names do not contain their parent city's
+name, so neither the section-code list nor a name-prefix rule can catch them. The
+largest groups are **Warsaw's 18** districts (Mokotów, Wola, Bemowo, Śródmieście,
+…), **Wrocław's 21** (Przedmieście Świdnickie, Huby, Szczepin, Ołbin, …),
+**Naples' 12** (Fuorigrotta, Pianura, Ponticelli, Secondigliano, …) and one
+district of Rome. They are kept deliberately: each is a real place above the
+population threshold, the map draws only cities reachable within the chosen
+number of hours, and a district that no station serves never appears in a result.
+A mechanical replacement rule keyed on a district and its parent city sharing the
+GeoNames `adm3` code was tested and rejected, because it also removes real towns:
+Villeurbanne, Roubaix, Tourcoing, Schaerbeek, Ixelles, Anderlecht, Stolberg,
+Herzogenrath and Laatzen — and Schaerbeek and Anderlecht are origins.
+
 The **origins** are the largest 10 cities of each country by population.
 Luxembourg has only three above 10,000, so the set is **103** cities, not 110.
-Twenty-one of them have no station in the imported feeds (Belgium, Denmark, the
-southern half of Italy, one Austrian GeoNames artefact and two Luxembourg
-communes); see coverage below.
+Seven of them have no station in the imported feeds — Naples, Palermo, Genoa,
+Bari and Catania in Italy, Frederiksberg in Denmark, and Eisenzicken in Austria
+— so the measurement covers **96** origins. See coverage below.
 
 ## Station matching
 
 Each MOTIS stop is assigned to the city whose name it carries, matching against
 the city's name, its ASCII name and its GeoNames alternate names so that
 `Wien Hauptbahnhof` reaches Vienna and `Wrocław Główny` reaches Wrocław. A stop
-that carries several city names goes to the nearest of them. A stop that
-matches no city is left out, and a station named after its city but more than
-30 km from it is treated as a coincidence and also left out.
+matches only when the city name is the **first** words of the stop name. A
+parenthesised part or a later word is a disambiguator, not the station's own
+place: `Erzingen (Baden)` carries the German region Baden and not the Swiss city
+of Baden, and `Leverkusen Opladen Bf` belongs to Leverkusen and not to Opladen.
+A stop that carries several city names as a prefix goes to the nearest of them.
+A stop that matches no city is left out, and a station named after its city but
+more than 30 km from it is treated as a coincidence and also left out.
 
 This is the fragile part of the dataset. A missed station makes a city look
 farther away than it is; a station wrongly attached to a city makes it look
@@ -88,25 +106,49 @@ closer. `city_station.parquet` exists so the assignment can be reviewed.
 
 ## Coverage
 
-The import loads seven GTFS feeds: `de-fv` and `de-rv` (gtfs.de), `at` (ÖBB),
-`nl` (OpenOV), `ch` (opentransportdata.swiss), `pl` (PKP Intercity community
-mirror) and `cz` (CZPTT community mirror). The consequences are visible in the
-data.
+The import loads ten GTFS feeds, one national feed per country except France and
+Italy: `de-fv` and `de-rv` (gtfs.de), `at` (ÖBB), `nl` (OVapi, the NDOV national
+timetable), `ch` (opentransportdata.swiss), `lu` (data.public.lu), `be` (iRail,
+mirroring SNCB), `pl` (PKP Intercity community mirror), `cz` (CZPTT community
+mirror) and `dk` (Rejseplanen Labs). The consequences are visible in the data.
 
-- Germany, Austria, Switzerland, the Netherlands, Poland and Czechia are
-  covered end to end.
-- Belgium, France and Denmark appear only through the foreign stations that
-  `de-fv` calls at, so most of their cities have no station and never appear as
-  a destination. Reaching them as an origin is impossible for the same reason.
+The share of each country's cities that have at least one station in
+`city_station.parquet`, measured on the committed data:
+
+| Country | Cities | With a station |
+|---|---|---|
+| LU | 3 | 100.0% |
+| AT | 51 | 98.0% |
+| CZ | 147 | 87.8% |
+| CH | 133 | 85.7% |
+| DK | 90 | 76.7% |
+| DE | 1,517 | 74.0% |
+| PL | 460 | 57.6% |
+| BE | 371 | 55.0% |
+| NL | 292 | 54.8% |
+| FR | 913 | 21.5% |
+| IT | 945 | 4.4% |
+
+This counts stations, not reachability: a city with a station is not
+necessarily reachable from any origin. France and Italy are low because they
+have no national feed, so most of their cities have no station in the graph at
+all; the others fall short because the imported feeds do not call at every place
+over 10,000 inhabitants that GeoNames lists.
+
+- France has no national feed, so French destinations appear only where the
+  German and Swiss feeds call: Paris, Strasbourg, Lyon, Marseille, Bordeaux,
+  Toulouse, Nantes, Nice and Montpellier, but few others.
 - Italy is covered in the north only (Milan, Turin, Bologna, Florence, Rome
-  through connecting feeds). No Italian feed is imported, so Naples, Palermo,
-  Genoa, Bari and Catania have no station and no data.
-- Luxembourg City and a few neighbouring communes appear through `de-fv`;
-  Esch-sur-Alzette and Dudelange do not.
+  through connecting feeds). There is no account-free national Italian GTFS, and
+  the regional city feeds are local transit with no intercity rail, so Naples,
+  Palermo, Genoa, Bari and Catania have no station and no data.
 
-The number of destinations a single origin reaches therefore varies from 1
-(Turin, whose Italian network is absent) to about 1,950 (Berlin, in the middle
-of the best-covered country).
+There are **2,300** distinct destination cities in `travel_time.parquet`. The
+number a single origin reaches ranges from **1** — Marne La Vallée, Turin and
+Florence — to **2,145** (Berlin, in the middle of the best-covered country).
+Marne La Vallée's only inbound service comes from feeds that do not call there
+within 12 hours; Turin and Florence are reached only through the few
+northern-Italy calls the German, Austrian and Swiss feeds make.
 
 ## The GTFS-only import
 

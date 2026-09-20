@@ -52,10 +52,18 @@ MAX_TRAVEL_MINUTES = 720
 
 ORIGINS_PER_COUNTRY = 10
 
-# The MOTIS container has 4 CPUs and the server reports n_threads=4. Routing is
-# single-threaded per query, so a fifth request in flight waits rather than
-# finishing the batch sooner.
+# The measurement saturates well before the server's eight threads: 40 calls take
+# 40.5 s at 4 in flight and 42.2 s at 8, because routing is single-threaded per
+# query and each response is tens of megabytes. Four is where the gain stops.
 MAX_IN_FLIGHT_REQUESTS = 4
+
+
+def _smallest_per_key(pairs: Iterable[tuple[str, int]]) -> dict[str, int]:
+    smallest: dict[str, int] = {}
+    for key, value in pairs:
+        if key not in smallest or value < smallest[key]:
+            smallest[key] = value
+    return smallest
 
 
 def minutes_by_city(
@@ -65,24 +73,18 @@ def minutes_by_city(
 
     Stops with no city are dropped: they belong to no place in the dataset.
     """
-    minutes: dict[str, int] = {}
-    for arrival in arrivals:
-        city_id = stop_city.get(arrival.motis_stop_id)
-        if city_id is None:
-            continue
-        if city_id not in minutes or arrival.minutes < minutes[city_id]:
-            minutes[city_id] = arrival.minutes
-    return minutes
+    return _smallest_per_key(
+        (stop_city[arrival.motis_stop_id], arrival.minutes)
+        for arrival in arrivals
+        if arrival.motis_stop_id in stop_city
+    )
 
 
 def minimum_per_city(samples: Iterable[Mapping[str, int]]) -> dict[str, int]:
     """Merge one sample's per-city minutes into the smallest across samples."""
-    minimum: dict[str, int] = {}
-    for sample in samples:
-        for city_id, minutes in sample.items():
-            if city_id not in minimum or minutes < minimum[city_id]:
-                minimum[city_id] = minutes
-    return minimum
+    return _smallest_per_key(
+        (city_id, minutes) for sample in samples for city_id, minutes in sample.items()
+    )
 
 
 def travel_time_table(

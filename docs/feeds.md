@@ -1,39 +1,65 @@
-# GTFS / NeTEx feeds
+# GTFS feeds
 
-Timetable feeds loaded into the MOTIS import for the map tab.
-
-`de_fv` covers DB's international network (long-distance trips and the foreign
-stations they call at). The national feeds add onward travel on foreign
-operators, for example Wien→Klagenfurt on ÖBB or Warszawa→Gdańsk on PKP.
+Timetable feeds loaded into the MOTIS import for the map tab. Each one is
+downloaded by `just motis-data` into `.motis/feeds/` and named after the MOTIS
+dataset id it becomes.
 
 ## Included
 
-| Country | Feed | URL | Size | Source | License |
+| Country | Dataset | URL | Size | Source | Licence |
 |---|---|---|---|---|---|
-| DE | Long-distance rail (`de_fv`) | `https://download.gtfs.de/germany/fv_free/latest.zip` | 0.4 MB | gtfs.de | CC-BY 4.0 |
-| DE | Regional rail (`de_rv`) | `https://download.gtfs.de/germany/rv_free/latest.zip` | 11 MB | gtfs.de | CC-BY 4.0 |
-| AT | ÖBB GTFS Fahrplan 2026 | `https://static.web.oebb.at/open-data/soll-fahrplan-gtfs/GTFS_Fahrplan_2026.zip` | 173 MB | ÖBB Open Data | CC BY 4.0 |
-| NL | OpenOV national | `https://gtfs.openov.nl/gtfs-rt/gtfs-openov-nl.zip` | 228 MB | OpenOV | CC0 |
-| CH | Swiss timetable | `https://data.opentransportdata.swiss/de/dataset/timetable-2026-gtfs2020/permalink` | 254 MB | opentransportdata.swiss | see terms of use |
-| LU | Public transport | `https://data.public.lu/api/1/datasets/horaires-et-arrets-des-transport-publics-gtfs/` | metadata API | data.public.lu | open |
-| BE | SNCB / NMBS | `https://sncb-opendata.hafas.de/gtfs/static/<token>` | 16 MB | SNCB Open Data | verify |
-| FR | SNCF national rail (NeTEx) | `https://mirror.traines.eu/french-netex/sncf-netex.fixed.zip` | 24 MB | community mirror | open (verify) |
-| PL | PKP Intercity | `https://gtfs.kasznia.net/static/pkp-ic.zip` | 150 MB | community mirror | verify |
-| CZ | CZPTT | `https://data.jr.ggu.cz/results/latest/CZPTT_GTFS.zip` | 34 MB | community | verify |
+| DE | `de-fv` | `https://download.gtfs.de/germany/fv_free/latest.zip` | 0.4 MB | gtfs.de | CC BY 4.0 |
+| DE | `de-rv` | `https://download.gtfs.de/germany/rv_free/latest.zip` | 11 MB | gtfs.de | CC BY 4.0 |
+| AT | `at` | `https://static.web.oebb.at/open-data/soll-fahrplan-gtfs/GTFS_Fahrplan_2026.zip` | 173 MB | ÖBB Open Data | CC BY 4.0 |
+| NL | `nl` | `https://gtfs.ovapi.nl/nl/gtfs-nl.zip` | 229 MB | OVapi (NDOV national feed) | CC0 |
+| CH | `ch` | `https://data.opentransportdata.swiss/de/dataset/timetable-2026-gtfs2020/permalink` | 254 MB | opentransportdata.swiss | see terms of use |
+| LU | `lu` | `https://data.public.lu/fr/datasets/r/b0cf7705-434d-44c7-b211-4fd760784988` | 17.5 MB | data.public.lu | CC BY 4.0, attribution required |
+| BE | `be` | `https://gtfs.irail.be/nmbs/gtfs/latest.zip` | 28.7 MB | iRail, mirroring SNCB | CC BY 4.0, attribution required |
+| PL | `pl` | `https://gtfs.kasznia.net/static/pkp-ic.zip` | 150 MB | PKP Intercity community mirror | see source |
+| CZ | `cz` | `https://data.jr.ggu.cz/results/latest/CZPTT_GTFS.zip` | 34 MB | CZPTT community mirror | see source |
+| DK | `dk` | `https://www.rejseplanen.info/labs/GTFS.zip` | 50.9 MB | Rejseplanen Labs | free for non-commercial use, attribution requested |
 
-## Excluded
+`de-fv` covers DB's international network — long-distance trips and the foreign
+stations they call at. The national feeds add onward travel on the operators of
+each country, for example Wien→Klagenfurt on ÖBB, Utrecht→Groningen on NS, or
+Antwerpen→Brugge on NMBS.
 
-| Country | Reason |
+Attribution:
+
+- **LU** (CC BY 4.0): attribute *data.public.lu* / the Luxembourg public-transport
+  publishers wherever the derived data is shown.
+- **BE** (CC BY 4.0): attribute *iRail / NMBS-SNCB*.
+- **DK**: Rejseplanen asks for attribution and the feed is licensed for
+  non-commercial use only. Confirm that this project's use qualifies before
+  publishing derived Danish data.
+
+## Not imported
+
+| Country | Status |
 |---|---|
-| DK | No directly downloadable GTFS; Rejseplanen requires an account. Danish destinations served by DB still appear via `de_fv`. |
+| FR | No national feed is imported. A community NeTEx mirror exists (`https://mirror.traines.eu/french-netex/sncf-netex.fixed.zip`) but is not part of the build. French destinations appear only where the German and Swiss feeds call, so most of France has no station in the dataset. |
+| IT | No directly downloadable, account-free national GTFS exists; Trenitalia's producer URL is flagged unstable in the catalogues. Regional and city feeds (ANM Naples, AMAT Palermo, AMTAB Bari, AMT Liguria, FCE Catania) are local transit operators: they add city stops and no intercity rail, so they cannot make Italian cities reachable from Germany. |
+
+Belgium and Luxembourg are reachable because the feeds above are imported;
+Denmark too. Italy is covered only in the north, through the stations the German,
+Austrian and Swiss feeds connect.
 
 ## Operating notes
 
-- Files download into `.motis/`, which is gitignored. No feed is committed.
-- MOTIS ingests both GTFS and NeTEx, so the French NeTEx feed is used as-is.
+- Files download into `.motis/feeds/`, which is gitignored. No feed is committed.
+- MOTIS ingests both GTFS and NeTEx.
+- A MOTIS dataset id may not contain an underscore. The German feeds are
+  therefore `de-fv.zip` and `de-rv.zip`; `de_fv` would be rejected at import.
+- The ÖBB archive nests every file one directory deep. MOTIS reads a GTFS zip
+  only when the `.txt` files are at the archive root, and imports an unflattened
+  feed as an empty dataset without reporting an error, so `just motis-data`
+  flattens that archive in place after downloading it. It is the only feed that
+  needs this.
+- The `be` feed is a community mirror because the official SNCB channel is
+  API-key gated: `data.belgianmobility.io` answers 403 without an
+  `Ocp-Apim-Subscription-Key`. Do not point the build at it.
+- The `nl` feed is the NDOV national timetable served by OVapi. The OpenOV host
+  (`gtfs.openov.nl`) rate-limits repeated bulk downloads with HTTP 429.
 - `gtfs.de` free feeds are valid for 7 days; the ÖBB feed covers one timetable
   year. The import is a repeatable batch step.
-- The FR, PL, and CZ feeds come from community mirrors rather than the operator.
-  Verify their licenses and expect the URLs to move.
-- All URLs above were last verified to return HTTP 200 without credentials on
-  2026-09-20.
+- All URLs above were last fetched successfully on 2026-09-20.

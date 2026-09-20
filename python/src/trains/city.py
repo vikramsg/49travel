@@ -411,12 +411,21 @@ def _name_index(
 def _nearest_matching_city(
     index: dict[str, list[tuple[tuple[str, ...], City]]], stop: motis.MotisStop
 ) -> City | None:
-    words = _normalise_name(stop.name).split()
-    candidates: list[City] = []
-    for position in range(len(words)):
-        for key, city in index.get(words[position], ()):
-            if tuple(words[position : position + len(key)]) == key:
-                candidates.append(city)
+    """The nearest city whose name the station name starts with, or None.
+
+    Only word position 0 may match. A parenthesised part or any later word is a
+    disambiguator, not the station's own place: `Erzingen (Baden)` carries the
+    German region Baden, not the Swiss city, and `Leverkusen Opladen Bf` belongs
+    to Leverkusen, not to Opladen. Matching those anywhere attaches a station to a
+    city it does not serve, which makes the city look closer than it is — the one
+    optimistic error direction this dataset must not have.
+    """
+    words = tuple(_normalise_name(stop.name).split())
+    if not words:
+        return None
+    candidates = [
+        city for key, city in index.get(words[0], ()) if words[: len(key)] == key
+    ]
     best: City | None = None
     best_distance = MAX_STATION_DISTANCE_KM
     for city in candidates:

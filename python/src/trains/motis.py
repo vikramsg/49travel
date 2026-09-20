@@ -55,43 +55,36 @@ class StopArrival:
     minutes: int
 
 
-def stops_in_bbox(
-    min_corner: tuple[float, float], max_corner: tuple[float, float]
-) -> list[MotisStop]:
-    """Every stop MOTIS knows inside the box, or raise `TooManyStopsError`.
-
-    Corners are `(latitude, longitude)`. The rejection is against the number of
-    stops, not the size of the box, so no single box size always works.
-    """
-    try:
-        payload = _get_json(
-            _MAP_STOPS_PATH,
-            {"min": _corner(min_corner), "max": _corner(max_corner)},
-        )
-    except urllib.error.HTTPError as error:
-        if error.code == 422 and _is_too_many_stops(error):
-            raise TooManyStopsError from error
-        raise
-    return [_stop_from_json(entry) for entry in payload]
-
-
 def all_stops(
     min_corner: tuple[float, float], max_corner: tuple[float, float]
 ) -> list[MotisStop]:
-    """Every stop inside the box, split into requests that MOTIS accepts."""
+    """Every stop inside the box, split into requests that MOTIS accepts.
+
+    Corners are `(latitude, longitude)`. MOTIS rejects a box that holds too many
+    stops rather than truncating it, and the rejection is against the stop count,
+    so no single box size always works: a rejected box splits in four.
+    """
     stops: dict[str, MotisStop] = {}
     pending = [(min_corner, max_corner, 0)]
     while pending:
         low, high, depth = pending.pop()
         try:
-            for stop in stops_in_bbox(low, high):
-                stops[stop.stop_id] = stop
-        except TooManyStopsError:
-            if depth >= _MAX_BOUNDING_BOX_SPLIT_DEPTH:
+            payload = _get_json(
+                _MAP_STOPS_PATH,
+                {"min": _corner(low), "max": _corner(high)},
+            )
+        except urllib.error.HTTPError as error:
+            if not (error.code == 422 and _is_too_many_stops(error)):
                 raise
+            if depth >= _MAX_BOUNDING_BOX_SPLIT_DEPTH:
+                raise TooManyStopsError from error
             pending.extend(
                 (low, high, depth + 1) for low, high in _split_bbox(low, high)
             )
+            continue
+        for entry in payload:
+            stop = _stop_from_json(entry)
+            stops[stop.stop_id] = stop
     return list(stops.values())
 
 

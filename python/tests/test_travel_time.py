@@ -56,8 +56,8 @@ def test_reduction_keeps_the_shortest_arrival_at_any_station_of_a_city() -> None
 
 def test_reduction_drops_stops_that_no_city_owns() -> None:
     minutes = minutes_by_city(parse_one_to_all(CANNED_ONE_TO_ALL), STOP_CITY)
-    assert "fr_999" not in STOP_CITY
-    assert len(minutes) == 3
+    # fr_999's 12 minutes belong to no city, so no city is measured at 12.
+    assert 12 not in minutes.values()
 
 
 def test_reduction_keeps_the_minimum_across_samples() -> None:

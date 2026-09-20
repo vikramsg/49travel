@@ -182,6 +182,33 @@ def test_station_far_from_the_city_it_names_is_not_matched() -> None:
     assert stations_by_city(cities, [far_stop]) == {}
 
 
+def test_station_matches_a_city_name_only_at_the_start_of_its_name() -> None:
+    # A parenthesised part or a later word disambiguates a place; it is not the
+    # station's own city. "Erzingen (Baden)" carries the German region Baden, not
+    # the Swiss city of Baden, and "Leverkusen Opladen Bf" belongs to Leverkusen,
+    # not to Opladen. Both stops sit within the distance cap, so the position
+    # rule alone has to keep them off.
+    cities = select_cities(
+        [
+            geoname_row("40", "Baden", "CH", 18000, latitude=47.47, longitude=8.31),
+            geoname_row("41", "Opladen", "DE", 23000, latitude=51.07, longitude=7.0),
+        ]
+    )
+    stops = [
+        rail_stop("de_6", "Erzingen (Baden)", 47.6, 8.4),
+        rail_stop("de_7", "Leverkusen Opladen Bf", 51.07, 7.0),
+    ]
+    assert stations_by_city(cities, stops) == {}
+
+
+def test_station_starting_with_its_city_name_is_matched() -> None:
+    cities = select_cities(
+        [geoname_row("41", "Opladen", "DE", 23000, latitude=51.07, longitude=7.0)]
+    )
+    stop = rail_stop("de_8", "Opladen Bf", 51.07, 7.0)
+    assert stations_by_city(cities, [stop]) == {"41": [stop]}
+
+
 def test_local_spelling_of_an_english_geoname_name_is_matched() -> None:
     # GeoNames calls it Vienna; the station says Wien.
     cities = select_cities(
