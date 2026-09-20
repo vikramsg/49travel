@@ -40,3 +40,6 @@ ToDo.md
 
 # MOTIS engine, feeds and imported graph
 .motis/
+
+# GeoNames dump, downloaded by trains.city
+python/data/geonames/
