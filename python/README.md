@@ -52,7 +52,9 @@ in `data/travel49/hamburg.json`.
   `{City}_destinations` join table into it as it runs.
 - `data/travel49/*.json` — generated, one per origin city.
 
-`FEEDS.md` describes the GTFS feeds and their licences.
+The feeds, their sources and their licences are documented in
+[`../docs/feeds.md`](../docs/feeds.md), and what the produced numbers mean in
+[`../docs/data_notes.md`](../docs/data_notes.md).
 
 ## Archive
 
