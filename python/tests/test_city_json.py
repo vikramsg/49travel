@@ -7,19 +7,19 @@ from typing import Any
 import pytest
 from click import testing as click_testing
 
-from src.city_json import destinations_json, get_city_json
+from travel49.city_json import destinations_json, get_city_json
 
 
-def test_destinations_json(city_table_connection: Connection) -> None:
+def test_destinations_json(city_table_connection: Connection, tmp_path: Path) -> None:
     # Given
     conn = city_table_connection
-    output_file = Path(".").resolve() / "test" / "data" / "destinations.json"
+    output_file = tmp_path / "destinations.json"
 
     # When
     destinations_json(conn, "destinations", str(output_file))
 
     # Then
-    with open(output_file, "r") as file_read:
+    with open(output_file) as file_read:
         data = json.load(file_read)
         assert data == {
             "cities": [
@@ -37,12 +37,11 @@ def test_destinations_json(city_table_connection: Connection) -> None:
 
 
 def test_happy_path_city_exists(
-    city_table_connection_for_joining_and_json: Connection,
+    city_table_connection_for_joining_and_json: Connection, tmp_path: Path
 ) -> None:
     # Given
     city = "Hamburg"
-    output_file_path = Path(".").resolve() / "test" / "data"
-    output_file = output_file_path / f"{city.lower()}.json"
+    output_file = tmp_path / f"{city.lower()}.json"
     runner = click_testing.CliRunner()
 
     # When
@@ -51,14 +50,14 @@ def test_happy_path_city_exists(
         ["--city", city],
         obj={
             "conn": city_table_connection_for_joining_and_json,
-            "output_file_path": output_file_path,
+            "output_file_path": tmp_path,
         },
     )
 
     # Then
     assert result.exit_code == 0
 
-    with open(output_file, "r") as file_read:
+    with open(output_file) as file_read:
         data = json.load(file_read)
         assert len(data["cities"]) == 2
 
@@ -80,9 +79,8 @@ def test_happy_path_city_exists(
 
 
 @pytest.fixture
-def city_table_connection() -> Any:
-    db_path = Path(".").resolve() / "test" / "data" / "cities.sqlite"
-    conn = sqlite3.connect(db_path)
+def city_table_connection(tmp_path: Path) -> Any:
+    conn = sqlite3.connect(tmp_path / "cities.sqlite")
 
     cursor = conn.cursor()
     cursor.execute("DROP TABLE IF EXISTS destinations")
@@ -108,14 +106,13 @@ def city_table_connection() -> Any:
 
 
 @pytest.fixture
-def city_table_connection_for_joining_and_json() -> Any:
+def city_table_connection_for_joining_and_json(tmp_path: Path) -> Any:
     city = "Hamburg"
     cities_table = "cities"
     journeys_table = f"{city}_journeys"
     stops_table = "city_stops"
 
-    db_path = Path(".").resolve() / "test" / "data" / "cities.sqlite"
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(tmp_path / "cities.sqlite")
     cursor = conn.cursor()
 
     cursor.execute(f"DROP TABLE IF EXISTS {cities_table}")
@@ -131,7 +128,6 @@ def city_table_connection_for_joining_and_json() -> Any:
         ('Cologne', 'Cologne_description', 'Cologne_url')"""
     )
 
-    # Create journeys and stops table
     cursor.execute(
         f"CREATE TABLE {journeys_table} (city TEXT, stops INTEGER, journey_time INTEGER)"
     )

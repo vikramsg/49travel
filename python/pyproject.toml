@@ -1,0 +1,40 @@
+[project]
+name = "deutschland-ticket"
+version = "0.1.0"
+description = "The batch pipeline behind 49travel."
+requires-python = ">=3.14"
+dependencies = [
+    "click>=8.1.7",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.16",
+    "ty>=0.0.82",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Installing the project makes `travel49` importable from anywhere, so nothing
+# needs PYTHONPATH.
+[tool.hatch.build.targets.wheel]
+packages = ["src/travel49"]
+
+[tool.ruff]
+line-length = 88
+# Dead code kept for history, not maintained and not imported by anything.
+extend-exclude = ["archive"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+# The formatter wraps code at 88 but cannot wrap the long SQL string literals in
+# city_json.py, so the lint limit is higher than the format limit.
+[tool.ruff.lint.pycodestyle]
+max-line-length = 120
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

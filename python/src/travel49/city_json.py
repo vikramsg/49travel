@@ -4,7 +4,7 @@ from sqlite3 import Connection
 
 import click
 
-from src.common import city_table_connection
+from travel49.common import city_table_connection
 
 
 def join_cities_journeys(
@@ -117,7 +117,9 @@ def get_city_json(ctx: click.Context, city: str) -> None:
 
 
 if __name__ == "__main__":
+    # Click still parses `--city` from argv. `obj` only carries what the CLI
+    # cannot know: the connection, and where the generated JSON belongs.
     conn = city_table_connection()
-    output_file_path = Path(__file__).resolve().parent.parent / "data"
+    output_file_path = Path(__file__).resolve().parents[2] / "data" / "travel49"
     get_city_json(obj={"conn": conn, "output_file_path": output_file_path})
     conn.close()

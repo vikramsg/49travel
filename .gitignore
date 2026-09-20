@@ -30,6 +30,8 @@ yarn-error.log*
 
 # Python files
 *.pyc
+__pycache__/
+.venv/
 
 # ToDo file
 ToDo.md
