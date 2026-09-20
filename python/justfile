@@ -35,8 +35,10 @@ lu_feed := feeds_dir / "lu.zip"
 be_feed := feeds_dir / "be.zip"
 dk_feed := feeds_dir / "dk.zip"
 
-# 12 hours, because that is the widest the map's slider goes. MOTIS rejects
-# anything above `limits.onetoall_max_travel_minutes`, which defaults to 90.
+# 720 minutes (12 hours), because that is the widest the map's slider goes. The
+# same cap is `MAX_TRAVEL_MINUTES` in `src/trains/travel_time.py`, which is what
+# the client asks for as `maxTravelTime`. MOTIS refuses a request above
+# `limits.onetoall_max_travel_minutes`, which defaults to 90 minutes.
 max_travel_minutes := "720"
 
 # `-f` matters: without it curl saves an error page under the feed's name, and a

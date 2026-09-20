@@ -48,6 +48,10 @@ SAMPLE_HOURS = (5, 9, 13, 17, 21)
 # The 11 countries all keep CET/CEST, so one zone gives every origin's local
 # time. Values are minutes, because `maxTravelTime` and `duration` both are.
 SAMPLE_TIMEZONE = ZoneInfo("Europe/Berlin")
+
+# 720 minutes (12 hours). The same cap is `max_travel_minutes` in `justfile`,
+# which sets MOTIS's `onetoall_max_travel_minutes`; this is what the client asks
+# for. MOTIS refuses a request above the configured limit.
 MAX_TRAVEL_MINUTES = 720
 
 ORIGINS_PER_COUNTRY = 10
@@ -56,6 +60,10 @@ ORIGINS_PER_COUNTRY = 10
 # 40.5 s at 4 in flight and 42.2 s at 8, because routing is single-threaded per
 # query and each response is tens of megabytes. Four is where the gain stops.
 MAX_IN_FLIGHT_REQUESTS = 4
+
+
+class MeasurementOutOfTimetableError(Exception):
+    """No origin reached anything but itself, so the pinned day is out of range."""
 
 
 def _smallest_per_key(pairs: Iterable[tuple[str, int]]) -> dict[str, int]:
@@ -84,6 +92,31 @@ def minimum_per_city(samples: Iterable[Mapping[str, int]]) -> dict[str, int]:
     """Merge one sample's per-city minutes into the smallest across samples."""
     return _smallest_per_key(
         (city_id, minutes) for sample in samples for city_id, minutes in sample.items()
+    )
+
+
+def require_a_reachable_destination(
+    minutes_by_origin: Mapping[str, Mapping[str, int]],
+) -> None:
+    """Refuse a measurement in which no origin reaches a place other than itself.
+
+    A `MEASUREMENT_DATE` outside the imported timetable is not an error to MOTIS:
+    asked for such a day it answers 200 with only the origin's own stop area, no
+    trip taken and no other place, so every origin ends up with a single row.
+    Writing that would silently replace the committed dataset with an empty one.
+    The origin is present either way, and three real origins (Marne La Vallée,
+    Turin and Florence) reach only themselves on a valid day too, so this
+    whole-run check is the one signal that separates the two.
+    """
+    if any(
+        city_id != origin_city_id
+        for origin_city_id, minutes in minutes_by_origin.items()
+        for city_id in minutes
+    ):
+        return
+    raise MeasurementOutOfTimetableError(
+        f"no origin reached any place other than itself on {MEASUREMENT_DATE}; "
+        "the measurement date is outside the imported timetable"
     )
 
 
@@ -172,6 +205,7 @@ def main() -> None:
             minutes_by_origin[origin_city_id] = future.result()
             print(f"{origin_city_id}: {len(minutes_by_origin[origin_city_id])} cities")
 
+    require_a_reachable_destination(minutes_by_origin)
     write_dataset(travel_time_table(minutes_by_origin), TRAVEL_TIME_PARQUET)
 
 

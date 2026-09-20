@@ -71,7 +71,7 @@ def all_stops(
         try:
             payload = _get_json(
                 _MAP_STOPS_PATH,
-                {"min": _corner(low), "max": _corner(high)},
+                {"min": _format_corner(low), "max": _format_corner(high)},
             )
         except urllib.error.HTTPError as error:
             if not (error.code == 422 and _is_too_many_stops(error)):
@@ -129,7 +129,7 @@ def _split_bbox(
     ]
 
 
-def _corner(corner: tuple[float, float]) -> str:
+def _format_corner(corner: tuple[float, float]) -> str:
     return f"{corner[0]},{corner[1]}"
 
 

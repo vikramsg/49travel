@@ -47,9 +47,9 @@ from. The value is a fixed reference date inside the imported feeds' validity,
 not the day the pipeline happened to run.
 
 The measurement samples local departures at 05:00, 09:00, 13:00, 17:00 and
-21:00. Departures between 00:00 and 05:00 are deliberately not sampled. There is
-no weekday/weekend split: on the same grid the weekend never produces a shorter
-time than the weekdays.
+21:00. Departures between 00:00 and 05:00 are not sampled. There is no
+weekday/weekend split: on the same grid the weekend never produces a shorter time
+than the weekdays.
 
 ## The cities
 
@@ -68,18 +68,14 @@ A place is in `city.parquet` when all of the following hold.
 Together that is **4,922** places.
 
 That is not a count of separate towns. GeoNames gives some city districts a
-plain-city feature code, and their names do not contain their parent city's
-name, so neither the section-code list nor a name-prefix rule can catch them. The
+plain-city feature code, and their names do not contain their parent city's name,
+so they cannot be told apart from a city by the fields this dataset selects. The
 largest groups are **Warsaw's 18** districts (Mokotów, Wola, Bemowo, Śródmieście,
 …), **Wrocław's 21** (Przedmieście Świdnickie, Huby, Szczepin, Ołbin, …),
 **Naples' 12** (Fuorigrotta, Pianura, Ponticelli, Secondigliano, …) and one
-district of Rome. They are kept deliberately: each is a real place above the
-population threshold, the map draws only cities reachable within the chosen
-number of hours, and a district that no station serves never appears in a result.
-A mechanical replacement rule keyed on a district and its parent city sharing the
-GeoNames `adm3` code was tested and rejected, because it also removes real towns:
-Villeurbanne, Roubaix, Tourcoing, Schaerbeek, Ixelles, Anderlecht, Stolberg,
-Herzogenrath and Laatzen — and Schaerbeek and Anderlecht are origins.
+district of Rome. They remain in `city.parquet` as places. The map draws a place
+only when a train reaches it, and a district that no station serves never appears
+in a result.
 
 The **origins** are the largest 10 cities of each country by population.
 Luxembourg has only three above 10,000, so the set is **103** cities, not 110.
@@ -154,29 +150,15 @@ northern-Italy calls the German, Austrian and Swiss feeds make.
 
 MOTIS is imported with **no OpenStreetMap extract**. There is no `osm.pbf`, no
 street graph and no address index. MOTIS routes only the trips and transfers the
-feeds declare, and cannot route a walking path between two nearby stops.
-
-Measured on the Aachen reference dataset, running the same 720-minute query
-against an OSM+GTFS instance and a GTFS-only one:
-
-| | |
-|---|---|
-| reachable stops | 6087 both |
-| maximum duration | 710 minutes both |
-| stops differing | 415 of 6087 (**6.8%**) |
-| direction | GTFS-only is **never faster**, only equal or slower |
-| mean penalty where it differs | **14.1 minutes** |
-| maximum penalty | **30 minutes** |
-
-The cause is a missing walking transfer: without a street network MOTIS cannot
-move between two stops the feed does not connect, so it waits for a later
+feeds declare, and cannot route a walking path between two nearby stops, so a
+transfer the feeds do not declare is missed and the traveller waits for a later
 departure.
 
-This is accepted for two reasons. The measurement is **station to station**, and
-a walking leg inside a city is noise at the scale the map answers at. And the
-error is **one-directional**: the map can under-report that a city is reachable
-within the chosen number of hours, but it never promises a trip that cannot be
-made. The sampling grid (below) overstates times in the same direction.
+The cost is that `minutes` is pessimistic by up to tens of minutes: it can be too
+large, never too small. That is accepted. The measurement is **station to
+station**, so a walking leg inside a city is noise at the scale the map answers
+at; and because the error is one-directional, the map never promises a trip that
+cannot be made. The sampling grid overstates times in the same direction.
 
 ## Accuracy
 

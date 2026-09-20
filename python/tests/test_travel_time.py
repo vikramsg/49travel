@@ -1,10 +1,14 @@
+import pytest
+
 from trains import motis, travel_time
 from trains.motis import parse_one_to_all
 from trains.travel_time import (
     MAX_TRAVEL_MINUTES,
     MEASUREMENT_DATE,
+    MeasurementOutOfTimetableError,
     minimum_per_city,
     minutes_by_city,
+    require_a_reachable_destination,
     travel_time_table,
 )
 
@@ -95,6 +99,18 @@ def test_origin_is_sampled_at_five_local_departures_and_reduced(
     assert stops == ["de-fv_460848"] * 5
     assert caps == [MAX_TRAVEL_MINUTES] * 5
     assert minutes == {"hamburg": 0, "berlin": 134, "munich": 350}
+
+
+def test_a_measurement_that_reaches_nothing_is_refused() -> None:
+    # A day outside the imported timetable makes MOTIS return only the origin's
+    # own stop area, so every origin reaches nothing but itself and writing the
+    # dataset would replace the committed one with an empty result.
+    with pytest.raises(MeasurementOutOfTimetableError):
+        require_a_reachable_destination({"hamburg": {"hamburg": 0}})
+
+
+def test_a_measurement_that_reaches_one_other_place_is_accepted() -> None:
+    require_a_reachable_destination({"hamburg": {"hamburg": 0, "berlin": 134}})
 
 
 def test_written_table_states_the_day_it_was_measured_on() -> None:
