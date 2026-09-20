@@ -33,3 +33,5 @@ yarn-error.log*
 
 # ToDo file
 ToDo.md
+# Playwright CLI output (may contain credentials)
+.playwright-cli/
