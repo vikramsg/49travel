@@ -37,3 +37,6 @@ __pycache__/
 ToDo.md
 # Playwright CLI output (may contain credentials)
 .playwright-cli/
+
+# MOTIS engine, feeds and imported graph
+.motis/
