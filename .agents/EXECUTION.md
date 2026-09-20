@@ -1,7 +1,10 @@
 # Execution protocol — background agents
 
 How the layered plan (`.agents/plans/map-tab-nextjs-migration.md`) is executed by
-background agents, and how comment, naming, and testing hygiene are enforced.
+background agents, and how comment, naming, testing, documentation, and UX
+hygiene are enforced.
+
+The UX standard that UI layers are held to lives in `.agents/UX.md`.
 
 Model for **all** subagents (implementers and reviewers alike):
 `opencode-go/deepseek-v4.1-flash#high`. No other variant is used.
@@ -71,6 +74,25 @@ Enforcement is layered, because prompt instructions alone are not enough:
   vacuously.
 - The reviewer audits test intent, not just pass/fail.
 
+## UI verification
+
+Code that runs proves nothing about what a screen looks like. An API response, a
+`curl`, or a DOM assertion is **not** evidence that the page works.
+
+- **Drive a real browser with `playwright-cli`, then read the snapshot image with
+  the `read` tool and look at it.** The image is the evidence. If I have not
+  looked at a picture of the screen, the screen is unverified — regardless of what
+  the API returned.
+- **Capture a baseline before layer 3 replaces CRA**, so the €49 pages are
+  compared against a real reference rather than a memory.
+- **Every control gets its states checked by picture** — default, activated,
+  boundary, empty result, error, and dismissal. `.agents/UX.md` lists them.
+- **The reviewer cannot see images.** It holds the code and the DOM against
+  `.agents/UX.md`. The pixel judgement is mine and cannot be delegated.
+- These are hand-run checks at each UI layer. They are deliberately **not** added
+  to the test suite (`AGENTS.md`: do not automate what has to be verified
+  manually).
+
 ## Documentation hygiene
 
 Reference docs (for example `python/batch/FEEDS.md`) describe the **current
@@ -110,6 +132,9 @@ Only once checks and tests pass **and** my review is clean:
    - **testing hygiene** — flag snapshot/change-detection tests, tests that would
      pass vacuously, and any automated test for something that must be verified
      manually;
+   - **UX standard** — hold the code and the DOM against `.agents/UX.md`: missing
+     states, unreachable controls, absent focus handling, any screen with no
+     stated behaviour when the request fails;
    - **simplifications and layer-rule violations** — the questions "could this be
      simpler?" and "is this in the right layer?".
    It must **not** propose defensive or over-engineered additions.
@@ -134,6 +159,9 @@ A layer is done only when all of these hold:
 
 - static checks pass, tests pass
 - I have read the full diff
+- for a layer with UI changes, I have looked at images of every screen and control
+  it adds or alters, and compared the migrated €49 pages against the pre-migration
+  baseline
 - a separate reviewer has run and every finding is adjudicated
 - implementation notes are written
 - the plan file has **not** been edited (changes go in the notes)
