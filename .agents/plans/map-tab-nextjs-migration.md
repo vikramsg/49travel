@@ -21,6 +21,12 @@ The existing €49 regional use case is preserved, not replaced. Two use cases c
 - Map UX: **origin selector + hours slider**.
 - Data: **Python via `uv`, Python 3.14, output Parquet**, queried by **native DuckDB inside Hono** (server-side; `duckdb-wasm` dropped).
 - **All Python deps upgraded.**
+- **Python tooling: `uv` + Python 3.14, `ruff` for lint and format, `ty` for type checking, `pytest` for tests.** `black`, `flake8`, `isort`, and `mypy` are removed.
+- **Pipeline runner: `just`.** MOTIS runs locally for the batch job; the engine binary, OSM extract, and GTFS feeds are **never committed**.
+- **Reachability via MOTIS `one-to-all`**, capped at **12 hours**, run from each of the 7 origins.
+- **Country set = DB Fernverkehr's international network**: Germany + Austria, Switzerland, Netherlands, Belgium, France, Denmark, Poland, Czechia, Italy, Luxembourg.
+- **Destination catalog = the 7 Home cities ∪ the top 10 cities by population per country.** Populations from GeoNames `cities500`, excluding section-of-populated-place codes.
+- **Committed Parquet must stay under 10 MB per output file.** The pipeline treats this as a hard check and fails rather than committing oversized data.
 - Delivery via **stacked PRs using the GitHub CLI `gh stack` extension** (verified installed here: v0.1.1, `gh` 2.100.0, authed as `vikramsg`).
 - Assumed (call out if wrong): map renders with **react-leaflet + OSM tiles** (no API key).
 
@@ -50,14 +56,64 @@ Do these small refactors before the big moves; each makes the intended change ea
   app/origin/[city]/page.tsx
   app/map/page.tsx        Map tab: origin Select + hours Slider + Leaflet map
   app/api/[[...route]]/route.ts   Hono via hono/vercel
+justfile                  fetch MOTIS, fetch feeds, import, serve, run pipeline
 python/batch/             uv project, Python 3.14
-  src/transitous.py       MOTIS client (replaces pyhafas)
-  src/city_json.py        → emits Parquet instead of JSON
-  data/*.parquet          published artifacts (committed)
+  FEEDS.md                feed selection, URLs, licenses, exclusions
+  src/one_to_all.py       MOTIS one-to-all client (replaces pyhafas)
+  src/catalog.py          destination catalog (Home cities + GeoNames top-10)
+  src/emit_parquet.py     → emits Parquet instead of JSON
+  out/*.parquet           published artifacts (committed, small)
   data/cities.sqlite      seed data (descriptions, coords, stops) — keep, never delete
+.motis/                   GITIGNORED: binary, osm.pbf, gtfs/, config.yml, imported graph
 ```
 
-Hono endpoint: `GET /api/reachable?origin=Hamburg&hours=6&trains=any|regional` → JSON point set for the map (DuckDB reads the Parquet).
+Hono endpoint: `GET /api/reachable?origin=Hamburg&hours=6` → JSON point set for the map (DuckDB reads the Parquet).
+
+## MOTIS toolchain via `just`
+
+MOTIS is self-hosted for the batch job only. `just` replaces the ad-hoc `Makefile`s for the pipeline (the Python project itself stays runnable with `uv`).
+
+**Nothing MOTIS consumes is committed.** The engine binary, OSM extract, GTFS feeds, and the imported graph all live under a single gitignored directory.
+
+| Path | Committed? | Contents |
+|---|---|---|
+| `justfile` | yes | recipes below |
+| `python/batch/**` | yes | pipeline source |
+| `python/batch/out/*.parquet` | yes | published datasets, **each < 10 MB** (enforced) |
+| `python/batch/data/cities.sqlite` | yes | seed data (descriptions, coords, stops) |
+| `.motis/` | **no** | binary, `osm.pbf`, `gtfs/`, `config.yml`, imported graph |
+
+`.gitignore` must gain `.motis/`.
+
+```just
+# fetch the pinned MOTIS release binary for the host platform, verify checksum
+motis-fetch:
+    ...
+
+# download osm.pbf and one GTFS feed per DB Fernverkehr country into .motis/gtfs/
+motis-data:
+    ...
+
+# motis config .motis/osm.pbf .motis/gtfs/*.zip && motis import
+motis-import:
+    ...
+
+# start the local MOTIS server for the batch run
+motis-server:
+    ...
+
+# one-to-all from each of the 7 origins, capped at 12h → Parquet
+pipeline:
+    ...
+```
+
+Notes:
+- Pin MOTIS to a release tag (latest is **v2.11.3**; assets are `motis-{linux-amd64,linux-arm64,macos-arm64}.tar.bz2`, `motis-windows.zip`) and record its sha256 in the justfile.
+- Resolve the national feeds via the **Mobility Database** (`mobilitydatabase.org`, CSV catalog + API, mirrored downloads looked up by country code) rather than hunting 11 separate portals. MOTIS also ingests **NeTEx**, which matters because several EU states publish NeTEx through National Access Points instead of GTFS.
+- The feed set is decided and documented in **`python/batch/FEEDS.md`**: German `de_fv` + `de_rv`, plus every directly-downloadable national feed (**AT** (ÖBB, CC BY 4.0), NL, CH, LU, BE, FR, PL, CZ). Only **DK** is excluded (no GTFS; Rejseplanen needs an account) — its DB-served destinations still appear through `de_fv`, which already contains **203 foreign stations**.
+- `gtfs.de` is Germany-only (feeds `de_fv`, `de_rv`, `de_nv`).
+- MOTIS expects **one** `osm.pbf`. Geofabrik publishes per-country extracts, so the countries must be merged (e.g. with `osmium merge`) into a single file, or a larger Europe extract used instead.
+- `just pipeline` requires the imported graph; it should invoke `motis-import` first if `.motis/data` is absent.
 
 ## Delivery: stacked PRs with `gh stack`
 
@@ -76,7 +132,7 @@ Facts that matter for this plan:
 | # | Branch | Depends on | Contents |
 |---|---|---|---|
 | 1 | `uv-migration` | `main` | `python/batch` → uv / PEP 621, Python 3.14, drop LLM + pydantic deps, rewrite CI workflow |
-| 2 | `train-pipeline` | 1 | Transitous client, Parquet output, two datasets, tests |
+| 2 | `train-pipeline` | 1 | `just` MOTIS toolchain, destination catalog, one-to-all, Parquet output, tests |
 | 3 | `next-hono-bootstrap` | 1 | CRA → Next (TS, Tailwind, shadcn), port existing pages, mount Hono, prove the €49 behaviour is unchanged |
 | 4 | `map-view` | 2, 3 | `/map` tab, origin Select + hours Slider, `/api/reachable` (native DuckDB), Leaflet; update `AGENTS.md` |
 
@@ -108,37 +164,39 @@ gh stack merge           # land the stack, or merge layers individually
 
 Phases map onto the stack layers above; Phase 5 is folded into layers 1, 3, and 4.
 
-**Phase 1 — Pipeline modernization** (independent of the frontend; verifiable from the CLI)
+**Phase 1 — uv migration (stack layer 1)**
 - Convert `[tool.poetry]` → PEP 621 `[project]`; `requires-python = ">=3.14"`; generate `uv.lock`.
-- Replace pyhafas with a `transitous.py` client. Confirm how to restrict regional-only (verify `transitModes` / mode filtering in MOTIS) so regional and any-train datasets can both be produced.
-- Emit **Parquet** for both datasets. Update `city_json.py`, the `Makefile`s, and the root copy step (currently `cp ... src/data`).
-- Pin a reference date/time for journey queries (times are date-dependent).
-- Port and update the existing pytest suite; add tests for the Transitous mapping.
+- Drop the dead LLM/pydantic deps (see Tidy First), archive `langchain_summarize.py` and the LLM path in `cities.py`.
+- Replace the toolchain: delete `static_checks.sh`, `linter.sh`, `.flake8`, `mypy.ini` and the `black`/`flake8`/`isort`/`mypy` dev deps. Add **`ruff`** (lint + format) and **`ty`** (typecheck). Testing is **`pytest` only**.
+- Rewrite `.github/workflows/pytest.yaml` from Poetry to uv and the new commands.
+- Update `AGENTS.md` so its Python commands match the new toolchain.
 
-**Phase 2 — Backend**
-- Add Hono at `app/api/[[...route]]/route.ts` with `handle` from `hono/vercel`.
-- Native DuckDB (`@duckdb/node-api`) reading committed Parquet. Ensure the Parquet is bundled into the function (`outputFileTracingIncludes`).
-- Verify locally and on a Vercel preview with `curl`.
+**Phase 2 — MOTIS pipeline (stack layer 2, independent of the frontend)**
+- Add the `justfile` and `.motis/` gitignore entry; implement `motis-fetch`, `motis-data`, `motis-import`, `motis-server`.
+- Assemble the feeds: gtfs.de (Germany) plus one national feed per DB Fernverkehr country (AT, CH, NL, BE, FR, DK, PL, CZ, IT, LU); merge per-country OSM extracts into the single `osm.pbf`.
+- Build the destination catalog: the 7 Home cities ∪ GeoNames `cities500` top-10 per country (exclude `PPLX`/`PPLQ`/`PPLCH`/`PPLL`/`PPLS`, sanity-check population outliers).
+- Implement `one_to_all.py`: one-to-all per origin, 12h cap, sampled departures, minimum travel time per reachable stop; match reachable stops to catalog cities.
+- Emit **Parquet** to `python/batch/out/`. Remove the `city_json.py` JSON path and the root `cp … src/data` step.
+- Port the pytest suite; add tests for the catalog selection and the reachability mapping.
 
-**Phase 3 — Next.js migration**
-- Scaffold Next.js App Router + TS + Tailwind + shadcn at root; retire CRA (`react-scripts`, `src/`, `public/` handling).
+**Phase 3 — Backend + Next.js (stack layer 3)**
+- Scaffold Next.js App Router + TS + Tailwind + shadcn at root; retire CRA.
 - Port Home, About, TopBar, CityPage to shadcn/Tailwind. Introduce the city manifest from Tidy First.
 - Keep the origin pages on the regional dataset.
+- Add Hono at `app/api/[[...route]]/route.ts`; native DuckDB (`@duckdb/node-api`) reading the committed Parquet, bundled via `outputFileTracingIncludes`. Verify locally and on a Vercel preview with `curl`.
 
-**Phase 4 — Map tab**
+**Phase 4 — Map tab (stack layer 4)**
 - Add the `/map` route + nav tab.
 - Origin Select + hours Slider (shadcn); react-leaflet map; fetch from `/api/reachable`.
-
-**Phase 5 — CI/CD + docs**
-- Update `.github/workflows/pytest.yaml` from Poetry to uv.
 - Update `AGENTS.md` for the new stack and commands.
-- Confirm the Vercel project builds Next.js and that previews appear on PRs.
 
 ## Risks / caveats
 
-- **Transitous is a volunteer instance.** Add caching and be polite; self-hosting MOTIS is the fallback if load grows.
+- **Feed assembly and OSM merging.** The German feed alone covers DB's international network (203 foreign stations), so the optional national feeds (AT, NL, CH, LU, BE, FR, PL, CZ) are for onward travel only. Remaining effort is pinning feed URLs and merging per-country OSM extracts into the single `osm.pbf` MOTIS expects. See `python/batch/FEEDS.md`.
+- **Feed staleness.** Free gtfs.de feeds are valid 7 days; importing is a repeatable batch step, so pin the import date and re-run rather than expecting a fixed dataset.
 - **Mode classification must be verified.** MOTIS has more than two rail modes (`HIGHSPEED_RAIL`, `LONG_DISTANCE`, `NIGHT_RAIL`, `REGIONAL_RAIL`, …); "regional vs any-train" must map correctly (some IC/EC may not be `HIGHSPEED_RAIL`).
-- **Native DuckDB in a Vercel function** adds cold-start and native-addon bundling risk, and the Parquet must ship inside the bundle. Total data is ~2.5k rows, so DuckDB is heavier than strictly needed — accepted deliberately.
+- **GeoNames quality.** Population is city-proper and occasionally wrong (an Austria run produced a bogus 54k entry), so the top-10 selection needs a sanity pass.
+- **Native DuckDB in a Vercel function** adds cold-start and native-addon bundling risk, and the Parquet must ship inside the bundle. Total rows are small, so DuckDB is heavier than strictly needed — accepted deliberately.
 - **Vercel Hobby:** non-commercial only; function duration capped (60s per the limits doc). Both fine for this app.
 - **shadcn/Tailwind means a full component rewrite**, since `react-bootstrap` is dropped.
 - **Journey times are a frozen snapshot** for the pinned reference date, not live data.
@@ -148,4 +206,4 @@ Phases map onto the stack layers above; Phase 5 is folded into layers 1, 3, and 
 - Whether the two-dataset split is the right boundary, or whether the map should also offer a "€49 only" toggle that reuses the regional dataset.
 - Whether server-side DuckDB has enough payoff over a plain Parquet/JSON fetch at this data size.
 - The Tidy First ordering: cutting the LLM stack and the city manifest before the migration, versus doing them during it.
-- The choice of Transitous as the data source, given it is community-run.
+- The choice of self-hosted MOTIS (feed assembly and re-import maintenance) versus the public Transitous API.
