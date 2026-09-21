@@ -5,9 +5,10 @@ const nextConfig: NextConfig = {
   // stay out of the bundle and be traced in as files instead.
   serverExternalPackages: ["@duckdb/node-api"],
   outputFileTracingIncludes: {
-    "/api/[[...route]]": [
+    "/*": [
       "./python/data/trains/*.parquet",
-      "./node_modules/@duckdb/**/*",
+      "./node_modules/@duckdb/node-bindings-*/duckdb.node",
+      "./node_modules/@duckdb/node-bindings-*/libduckdb.*",
     ],
   },
 };
