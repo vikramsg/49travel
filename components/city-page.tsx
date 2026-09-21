@@ -51,7 +51,9 @@ export function CityPage({ originStopId, destinations }: CityPageProps) {
             // pagination only appends — so the row index is the unique key.
             <Card key={index} className="relative">
               <CardHeader className="border-b bg-muted/50">
-                <CardTitle className="text-xl">{destination.city}</CardTitle>
+                <CardTitle className="text-xl">
+                  <h2>{destination.city}</h2>
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <p>

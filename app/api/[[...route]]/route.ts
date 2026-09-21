@@ -7,8 +7,7 @@ export const runtime = "nodejs";
 
 const app = new Hono().basePath("/api");
 
-// Proves the native DuckDB client reads the committed Parquet. The map's
-// `/api/reachable` query arrives in the next layer.
+// `/health` proves the native DuckDB client reads the committed city.parquet.
 app.get("/health", async (c) => {
   const connection = await trainsConnection();
   const reader = await connection.runAndReadAll(

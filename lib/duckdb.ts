@@ -1,8 +1,8 @@
 import { DuckDBInstance, type DuckDBConnection } from "@duckdb/node-api";
 import path from "node:path";
 
-// The committed Parquet datasets. `next.config.ts` traces this directory into
-// the Vercel function so the path also resolves on a serverless build.
+// `next.config.ts` traces this directory into the Vercel function, so the path
+// resolves on a serverless build as well as locally.
 export const trainsDataDir = path.join(
   process.cwd(),
   "python",

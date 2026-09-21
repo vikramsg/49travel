@@ -9,7 +9,9 @@ export default function HomePage() {
         <Link key={city.slug} href={`/origin/${city.slug}`}>
           <Card className="h-full transition-shadow hover:shadow-md">
             <CardHeader className="border-b bg-muted/50">
-              <CardTitle className="text-xl">{city.name}</CardTitle>
+              <CardTitle className="text-xl">
+                <h2>{city.name}</h2>
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <p>
