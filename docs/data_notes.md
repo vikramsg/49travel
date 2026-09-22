@@ -14,7 +14,8 @@ committed.
 | `city.parquet` | `city_id, name, country_code, latitude, longitude, population` | the map's markers |
 | `city_station.parquet` | `city_id, motis_stop_id, station_name` | nothing at runtime; shipped so the stop matching can be reviewed |
 | `travel_time.parquet` | `origin_city_id, city_id, minutes` | the reachability filter |
-| `city_link.parquet` | `city_id, wikipedia_url, wikivoyage_url` | the popup's article links |
+| `city_link.parquet` | `city_id, wikipedia_url, wikivoyage_url, wikidata_id` | the popup's article links, and the metrics' Wikidata item |
+| `city_metric.parquet` | `city_id, wikipedia_sitelinks, wikivoyage_article, unesco_sites, tourism_pois, db_station_category` | nothing at runtime yet |
 
 `city_station.motis_stop_id` points at MOTIS, which owns stations. There is no
 local station table, so it is not an enforceable foreign key.
@@ -44,6 +45,52 @@ rather than linking to somewhere else. On the committed dataset 3,975 of the
 4,922 cities have a Wikipedia article and 1,358 have a Wikivoyage article. Most
 of the misses are real articles that carry no coordinates at all, so a later pass
 could recover them by checking the article's country in Wikidata instead.
+
+## The city metrics
+
+`city_metric.parquet` holds one row of facts per city. Nothing is combined into a
+score: a score would hide which signal moved a city and would need re-tuning
+whenever a metric changed.
+
+| Column | Meaning | Source |
+| --- | --- | --- |
+| `wikipedia_sitelinks` | Language editions of the city's Wikipedia article; 0 when the resolver found no article | Wikidata `wikibase:sitelinks` |
+| `wikivoyage_article` | Whether an English Wikivoyage article was resolved | `city_link.parquet` |
+| `unesco_sites` | World Heritage Sites within 30 km | Wikidata `P1435` = `Q9259` |
+| `tourism_pois` | Mapped tourist features within 5 km | OpenStreetMap, through Overpass |
+| `db_station_category` | Deutsche Bahn category (1–7) of the nearest classified station within 10 km, or null | Wikidata `P5606` |
+
+`python/src/trains/metrics.py` builds it, and `make -C python city_metrics` runs
+that build. The Wikidata answers come from SPARQL. The OpenStreetMap features come
+from each country's Geofabrik extract, read by DuckDB's `ST_ReadOSM`: the extract
+is gigabytes, so it is downloaded once, its matching features are kept as a few
+hundred kilobytes of coordinates, and the extract is then deleted. Both caches
+live under `data/`, which is gitignored, so a rebuild re-counts rather than
+re-downloads and only the counts are committed.
+
+`ST_ReadOSM` describes every element the extract holds, so nodes are read directly
+and ways are placed at the average of the nodes they join, which for a building or
+a castle is its centre. Relations are not resolved: placing one means walking two
+hops, way ids and then node ids, and a tourist feature mapped as a relation is a
+multi-part site rather than a different kind of place. Leaving them out costs a
+few large sites rather than a class of them.
+
+The radii are choices rather than measurements: 30 km for a World Heritage Site,
+because a site is often outside the town that serves it; 5 km for a tourism
+feature, because that is walking distance from the centre; and 10 km for a
+station, because the category belongs to a station rather than to a town, so the
+nearest classified one is the station a traveller would use.
+
+The tourism tags are `tourism` in museum, attraction, viewpoint, gallery, zoo,
+theme park or aquarium, and `historic` in castle, archaeological_site or ruins.
+`amenity=restaurant` is deliberately absent: eateries are among the most mapped
+things there are, they would swamp the count, and a restaurant is somewhere to
+eat rather than something to go and look at.
+
+The station category is the Deutsche Bahn one, so it is set for German cities and
+null elsewhere. It is read from Wikidata `P5606` (class of station), whose values
+are per-country classes; the seven Deutsche Bahn ones are listed by id rather
+than matched by label, because a label is a guess where a list is not.
 
 ## What `minutes` means
 
