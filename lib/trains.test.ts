@@ -7,6 +7,9 @@ import { destinationsBetween, originCity, supportedOrigins } from "@/lib/trains"
 
 // The pipeline's sanity example and the map's default origin.
 const HAMBURG = "2911298";
+// In `city.parquet` as a destination, but never measured as an origin — the case
+// that tells a real origin lookup apart from "is this any city at all".
+const LUNEBURG = "2875115";
 const CAP_MINUTES = 12 * 60;
 
 describe("originCity", () => {
@@ -21,7 +24,11 @@ describe("originCity", () => {
     expect(await originCity("1")).toBeNull();
   });
 
-  it("answers for an origin the map offers", async () => {
+  it("returns nothing for a city that is a destination but not an origin", async () => {
+    expect(await originCity(LUNEBURG)).toBeNull();
+  });
+
+  it("lists the map's default origin among the supported origins", async () => {
     const origins = await supportedOrigins();
     expect(origins.length).toBeGreaterThan(0);
     expect(origins.map((origin) => origin.cityId)).toContain(HAMBURG);

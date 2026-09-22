@@ -20,6 +20,7 @@ import {
   MIN_BAND_HOURS,
   parseHoursBand,
   type HoursBand,
+  type HoursBandProblem,
 } from "@/lib/hours-band";
 import type { ReachableResponse, SupportedOrigin } from "@/lib/trains";
 
@@ -138,8 +139,8 @@ export function MapView({
   function applyTypedBand(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const parsed = parseHoursBand(minText, maxText);
-    if ("error" in parsed) {
-      setBandError(parsed.error);
+    if ("problem" in parsed) {
+      setBandError(bandProblemText(parsed.problem, minText, maxText));
       return;
     }
     applyBand(parsed.band);
@@ -335,8 +336,26 @@ export function MapView({
   );
 }
 
-function LegendDot({ color, size }: { color: string; size: number }) {
-  return (
+/**
+ * The form's wording for a rejected range. The same problems are worded for the
+ * API in `app/api/[[...route]]/route.ts`, which names query parameters instead.
+ */
+function bandProblemText(
+  problem: HoursBandProblem,
+  minText: string,
+  maxText: string,
+): string {
+  switch (problem) {
+    case "not-whole-hours":
+      return "Both bounds must be whole hours.";
+    case "out-of-range":
+      return `Both bounds must be between ${MIN_BAND_HOURS} and ${MAX_BAND_HOURS} h.`;
+    case "minimum-above-maximum":
+      return `Minimum (${minText}) must not exceed maximum (${maxText}).`;
+  }
+}
+
+function LegendDot({ color, size }: { color: string; size: number }) {  return (
     <span
       aria-hidden
       className="rounded-full border-2 border-white"

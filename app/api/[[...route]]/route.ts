@@ -1,11 +1,17 @@
 import { Hono } from "hono";
 import { handle } from "hono/vercel";
-import { parseHoursBand } from "@/lib/hours-band";
+import {
+  MAX_BAND_HOURS,
+  MIN_BAND_HOURS,
+  parseHoursBand,
+  type HoursBandProblem,
+} from "@/lib/hours-band";
 import {
   cityCount,
   destinationsBetween,
   measuredOn,
   originCity,
+  type ReachableResponse,
 } from "@/lib/trains";
 
 export const runtime = "nodejs";
@@ -16,6 +22,15 @@ const app = new Hono().basePath("/api");
 app.get("/health", async (c) => {
   return c.json({ status: "ok", cityCount: await cityCount() });
 });
+
+// Written for whoever calls the endpoint, so it names the query parameters and
+// gives an example. The map's form words the same problems for a person.
+const BAND_ERROR: Record<HoursBandProblem, string> = {
+  "not-whole-hours":
+    "minHours and maxHours must be whole numbers, e.g. ?minHours=0&maxHours=6",
+  "out-of-range": `minHours and maxHours must be from ${MIN_BAND_HOURS} to ${MAX_BAND_HOURS}`,
+  "minimum-above-maximum": "minHours must not exceed maxHours",
+};
 
 /**
  * Destinations reachable from one origin within a whole-hour travel-time band,
@@ -36,8 +51,8 @@ app.get("/reachable", async (c) => {
     c.req.query("minHours"),
     c.req.query("maxHours"),
   );
-  if ("error" in parsed) {
-    return c.json({ error: parsed.error }, 400);
+  if ("problem" in parsed) {
+    return c.json({ error: BAND_ERROR[parsed.problem] }, 400);
   }
 
   // An unknown origin cannot be told apart from a band with nothing in it by an
@@ -57,11 +72,12 @@ app.get("/reachable", async (c) => {
   );
 
   const measured = await measuredOn();
-  return c.json({
+  const payload: ReachableResponse = {
     measuredOn: measured,
     origin,
     destinations,
-  });
+  };
+  return c.json(payload);
 });
 
 export const GET = handle(app);

@@ -6,11 +6,18 @@ import { describe, expect, it } from "vitest";
 import { GET } from "@/app/api/[[...route]]/route";
 
 const HAMBURG = "2911298";
+// In `city.parquet` as a destination, but never measured as an origin.
+const LUNEBURG = "2875115";
 
 type ReachableBody = {
   error?: string;
   measuredOn?: string;
-  origin?: { cityId: string; name: string };
+  origin?: {
+    cityId: string;
+    name: string;
+    latitude: number;
+    longitude: number;
+  };
   destinations?: { cityId: string; minutes: number }[];
 };
 
@@ -29,9 +36,22 @@ describe("GET /api/reachable", () => {
     expect(response.status).toBe(200);
     const body = await readBody(response);
     expect(body.origin).toMatchObject({ cityId: HAMBURG });
+    expect(Number.isFinite(body.origin!.latitude)).toBe(true);
+    expect(Number.isFinite(body.origin!.longitude)).toBe(true);
     expect(body.measuredOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(body.destinations!.length).toBeGreaterThan(0);
     expect(body.destinations!.every((city) => city.minutes <= 6 * 60)).toBe(
+      true,
+    );
+  });
+
+  it("accepts the top of the scale, bound inclusive", async () => {
+    const response = await reachable(`origin=${HAMBURG}&minHours=12&maxHours=12`);
+
+    expect(response.status).toBe(200);
+    const body = await readBody(response);
+    expect(body.destinations!.length).toBeGreaterThan(0);
+    expect(body.destinations!.every((city) => city.minutes === 12 * 60)).toBe(
       true,
     );
   });
@@ -58,6 +78,10 @@ describe("GET /api/reachable", () => {
   const rejected: [string, string][] = [
     ["no origin", `minHours=0&maxHours=6`],
     ["an origin the pipeline never measured", `origin=1&minHours=0&maxHours=6`],
+    [
+      "a city that is a destination but not a measured origin",
+      `origin=${LUNEBURG}&minHours=0&maxHours=6`,
+    ],
     ["no band at all", `origin=${HAMBURG}`],
     ["a missing lower bound", `origin=${HAMBURG}&maxHours=6`],
     ["a missing upper bound", `origin=${HAMBURG}&minHours=0`],

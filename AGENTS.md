@@ -6,7 +6,7 @@
 - `components/map-view.tsx` — the map tab's controls, request state and legend. Loads `components/reach-map.tsx` client-side only, because Leaflet needs `window`.
 - `lib/cities.ts` — the single €49 city manifest (slug, display name, origin stop id, destination loader). The Home cards and the `/origin/[city]` routes are derived from it.
 - `lib/trains.ts` — server-side reads of the map's Parquet: the 96 supported origins, the measurement date, an origin lookup, and the travel-time band filter. Both `/map` and `/api/reachable` use it.
-- `lib/hours-band.ts` — the travel-time range, defined once: its 0–12 scale and the rule that the minimum may not exceed the maximum. `/api/reachable` parses its query with it and the map's slider and min/max form use the same parser, so the three cannot disagree.
+- `lib/hours-band.ts` — the travel-time range, defined once: its 0–12 scale and the rule that the minimum may not exceed the maximum. `/api/reachable` reports why a range is unusable using it, and the map's slider and min/max form share its scale and bounds rule, so the three cannot disagree.
 - `.github/workflows/python.yaml` — the pipeline's checks and tests. `.github/workflows/frontend.yaml` — the app's lint, tests and build.
 - `lib/duckdb.ts` — native DuckDB connection for the map's Parquet datasets.
 - `python/` — `uv` project (distribution `deutschland-ticket`) for the batch pipeline. The package is `src/travel49/`: `common.py` (sqlite connection) and `city_json.py` (join + emit the €49 JSON).
