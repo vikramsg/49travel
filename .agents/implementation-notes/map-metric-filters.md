@@ -230,6 +230,39 @@ non-numeric bound reports "Mapped sights nearby must be a whole number", marks o
 `.agents/baseline/map-filters-applied-desktop.png`, `map-filters-rejected-desktop.png`,
 `map-filters-mobile.png`.
 
+### 16. The map opens on a measured "popular" default; the API does not
+
+- **Decision:** the map's first view applies `minWikipediaSitelinks = 60` and `minTourismPois = 50`. The
+  other three metrics start off, and `/api/reachable`'s own default stays unfiltered.
+- **Why:** every filter being off meant the first thing a visitor saw was all 976 stops the default range
+  reaches, which is a wall rather than an answer. Two metrics narrow it, in the order asked for: Wikipedia
+  language editions first — the broad "is this place known at all" cut — and then mapped sights, which keeps
+  the ones with something to see. Neither number is picked: 60 leaves 227 of Hamburg's 976 and 228 of
+  Berlin's 1032, and adding the 50-sight cut leaves **103** and **98**, so the pair lands on the ~100 asked
+  for. The API keeps its unfiltered default because a caller asking for a band should get the band; only the
+  map chooses to open narrow.
+- **Where:** `lib/city-metric-filters.ts` (`DEFAULT_METRIC_FILTERS`), `components/map-view.tsx`.
+
+### 17. The controls moved to a left sidebar, and the five metrics behind one button
+
+- **Decision:** a left sidebar holds the origin selector and the travel-time band, always visible, with the
+  five metric filters behind an "Advanced filters" button. Collapsed, the applied filters still apply and a
+  "Show all destinations" button drops back to unfiltered. Below `lg` the sidebar stacks above the map.
+- **Why:** the origin and the range are the map's own two controls, and hiding them behind a disclosure would
+  make the map's state invisible. The five metrics are the optional layer, so they fold away; a button rather
+  than a tab because there is nothing else to switch between. "Show all destinations" is there because
+  opening narrow must not be a dead end, and it is visible without opening the button so the escape is always
+  one click away.
+- **Where:** `components/map-view.tsx`, `components/metric-filter-panel.tsx`, `.agents/UX.md`.
+
+### 18. The filter form became its own component
+
+- **Decision:** `components/metric-filter-panel.tsx` holds the five inputs, the button, and the form's draft
+  text and error state. `MapView` keeps only the applied filters, the request and the map.
+- **Why:** the draft must not redraw the map, so nothing outside the form needs to see it — which made the
+  panel a natural unit. It also keeps `map-view.tsx` about the map as the sidebar markup grows it.
+- **Where:** `components/metric-filter-panel.tsx`.
+
 ## Review
 
 A background reviewer read both commits. Its two findings are below, with what was done about each, and so
@@ -278,8 +311,10 @@ the new form's labels, `aria-invalid`, `aria-describedby` and `role="alert"`.
 4. **Decision 10 — two counting mechanisms.** Unifying on DuckDB would delete `PointGrid` and its tests.
 5. **Decision 12 — non-German cities vanish when the station filter is set.** That is the consequence of a
    German-only metric; decide whether the filter should instead apply only within Germany.
-6. **Decision 14 — no values shown and no default filter.** Both were mentioned in the ask and both are
-   guesses about product, so neither was made.
+6. **Decisions 16 and 17 — what "popular" means, and where the line is.** The map opens on two metrics,
+   Wikipedia language editions and then mapped sights. Decide whether that pair is right, whether the cuts
+   should be the measured 60 and 50, and whether the map should open narrow at all — and check the sidebar
+   reads well at desktop width as well as at 375 px.
 7. **Decision 9 — a resolver change inside the pipeline PR.** It belongs to the PR below it in the stack.
 8. **The coverage numbers.** How many cities get each metric is a data question, not a code question, and the
    numbers are in `docs/data_notes.md`.
