@@ -6,7 +6,7 @@ import { useEffect, useMemo } from "react";
 import L from "leaflet";
 import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import type { ReachableCity } from "@/lib/trains";
+import type { Destination, Origin } from "@/lib/trains";
 
 /** Formats a duration in minutes as hours and minutes: "2 h 14 min", "45 min", "2 h". */
 function formatMinutes(minutes: number): string {
@@ -31,15 +31,15 @@ function circleIcon(diameter: number, color: string) {
 }
 
 type ReachMapProps = {
-  cities: ReachableCity[];
-  originCityId: string;
+  destinations: Destination[];
+  origin: Origin;
   originColor: string;
   cityColor: string;
 };
 
 export function ReachMap({
-  cities,
-  originCityId,
+  destinations,
+  origin,
   originColor,
   cityColor,
 }: ReachMapProps) {
@@ -51,9 +51,18 @@ export function ReachMap({
     [originColor, cityColor],
   );
 
+  // The origin is framed with the destinations so it is never off-screen, and so
+  // that a range with nothing in it still frames the origin instead of an empty
+  // view.
   const positions = useMemo(
-    () => cities.map((city) => [city.latitude, city.longitude] as [number, number]),
-    [cities],
+    () => [
+      [origin.latitude, origin.longitude] as [number, number],
+      ...destinations.map(
+        (destination) =>
+          [destination.latitude, destination.longitude] as [number, number],
+      ),
+    ],
+    [origin, destinations],
   );
 
   return (
@@ -68,25 +77,32 @@ export function ReachMap({
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       />
       <FitToPositions positions={positions} />
-      {cities.map((city) => {
-        const isOrigin = city.cityId === originCityId;
-        return (
-          <Marker
-            key={city.cityId}
-            position={[city.latitude, city.longitude]}
-            icon={isOrigin ? icons.origin : icons.city}
-            // Leaflet orders markers by latitude, so a dense cluster can bury
-            // the origin. The offset keeps the origin marker on top of it.
-            zIndexOffset={isOrigin ? 1000 : 0}
-          >
-            <Popup>
-              <strong>{city.name}</strong>
-              <br />
-              {isOrigin ? "Origin" : formatMinutes(city.minutes)}
-            </Popup>
-          </Marker>
-        );
-      })}
+      {/* Drawn before the destinations and with a raised z-index: Leaflet orders
+          markers by latitude, so a dense cluster can bury the origin. */}
+      <Marker
+        position={[origin.latitude, origin.longitude]}
+        icon={icons.origin}
+        zIndexOffset={1000}
+      >
+        <Popup>
+          <strong>{origin.name}</strong>
+          <br />
+          Origin
+        </Popup>
+      </Marker>
+      {destinations.map((destination) => (
+        <Marker
+          key={destination.cityId}
+          position={[destination.latitude, destination.longitude]}
+          icon={icons.city}
+        >
+          <Popup>
+            <strong>{destination.name}</strong>
+            <br />
+            {formatMinutes(destination.minutes)}
+          </Popup>
+        </Marker>
+      ))}
     </MapContainer>
   );
 }

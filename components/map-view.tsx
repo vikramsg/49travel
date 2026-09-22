@@ -12,8 +12,23 @@ import {
   ComboboxItem,
   ComboboxList,
 } from "@/components/ui/combobox";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import {
+  CITY_SIZE_TOP_INDEX,
+  DEFAULT_CITY_SIZE,
+  citySizeBounds,
+  describeCitySize,
+  describeCitySizeCeiling,
+  type CitySizeRange,
+} from "@/lib/city-size";
+import {
+  MAX_BAND_HOURS,
+  MIN_BAND_HOURS,
+  parseHoursBand,
+  type HoursBand,
+} from "@/lib/hours-band";
 import type { ReachableResponse, SupportedOrigin } from "@/lib/trains";
 
 const ReachMap = dynamic(
@@ -31,7 +46,7 @@ type OriginOption = {
 };
 
 /**
- * The outcome of the latest request, keyed by the origin/hours/retry it answers.
+ * The outcome of the latest request, keyed by the origin/band/retry it answers.
  * Its key is how an in-flight request is detected without a separate `loading`
  * flag. A stale response can never win: the request is aborted on the next
  * change and its key no longer matches. The response itself is stored apart
@@ -44,21 +59,36 @@ type RequestOutcome =
 type MapViewProps = {
   origins: SupportedOrigin[];
   defaultOriginCityId: string;
-  defaultHours: number;
+  defaultMinHours: number;
+  defaultMaxHours: number;
 };
 
 export function MapView({
   origins,
   defaultOriginCityId,
-  defaultHours,
+  defaultMinHours,
+  defaultMaxHours,
 }: MapViewProps) {
   const [originCityId, setOriginCityId] = useState(defaultOriginCityId);
-  const [hours, setHours] = useState(defaultHours);
+  const [band, setBand] = useState<HoursBand>({
+    minHours: defaultMinHours,
+    maxHours: defaultMaxHours,
+  });
+  const [sizeRange, setSizeRange] = useState<CitySizeRange>(DEFAULT_CITY_SIZE);
+  // The form's text is held apart from the applied band so that a half-typed
+  // bound neither redraws the map nor fires a request for an invalid range.
+  const [minText, setMinText] = useState(String(defaultMinHours));
+  const [maxText, setMaxText] = useState(String(defaultMaxHours));
+  const [bandError, setBandError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [response, setResponse] = useState<ReachableResponse | null>(null);
   const [outcome, setOutcome] = useState<RequestOutcome | null>(null);
 
-  const queryKey = `${originCityId}|${hours}|${attempt}`;
+  const { minHours, maxHours } = band;
+  // Derived rather than stored: the slider's positions are the state, and the
+  // bounds in people are what the request, and its key, are made of.
+  const size = citySizeBounds(sizeRange);
+  const queryKey = `${originCityId}|${minHours}|${maxHours}|${size.minPopulation}|${size.maxPopulation}|${attempt}`;
 
   const originOptions = useMemo<OriginOption[]>(
     () => origins.map((origin) => ({ value: origin.cityId, label: origin.name })),
@@ -70,10 +100,19 @@ export function MapView({
 
   useEffect(() => {
     const controller = new AbortController();
+    const query = new URLSearchParams({
+      origin: originCityId,
+      minHours: String(minHours),
+      maxHours: String(maxHours),
+      minPopulation: String(size.minPopulation),
+    });
+    // The open top is left out rather than written as a number, so "no upper
+    // limit" stays distinguishable from a ceiling of 1,000,000.
+    if (size.maxPopulation !== null) {
+      query.set("maxPopulation", String(size.maxPopulation));
+    }
 
-    fetch(`/api/reachable?origin=${originCityId}&hours=${hours}`, {
-      signal: controller.signal,
-    })
+    fetch(`/api/reachable?${query}`, { signal: controller.signal })
       .then(async (result) => {
         if (!result.ok) {
           const body = (await result.json().catch(() => null)) as {
@@ -98,21 +137,59 @@ export function MapView({
       });
 
     return () => controller.abort();
-  }, [originCityId, hours, queryKey]);
+  }, [
+    originCityId,
+    minHours,
+    maxHours,
+    size.minPopulation,
+    size.maxPopulation,
+    queryKey,
+  ]);
 
   const loading = outcome?.key !== queryKey;
   const error = !loading && outcome?.status === "error" ? outcome.message : null;
 
-  const cities = response?.cities ?? [];
-  const reachableCount = Math.max(cities.length - 1, 0);
+  const destinations = response?.destinations ?? [];
+  const destinationCount = destinations.length;
+
+  // A narrowed size range changes which places count as destinations, so the
+  // summary states the range it applied and the empty message blames the size
+  // rather than the travel time, which may be perfectly wide.
+  const sizeNarrowed =
+    sizeRange.minIndex !== DEFAULT_CITY_SIZE.minIndex ||
+    sizeRange.maxIndex !== DEFAULT_CITY_SIZE.maxIndex;
+  const sizeClause = sizeNarrowed
+    ? ` with ${describeCitySize(sizeRange)} people`
+    : "";
+  const noDestinations = sizeNarrowed
+    ? `No destination${sizeClause} is between ${minHours} h and ${maxHours} h of ${originName}. Widen the travel time or the city size.`
+    : `No destination is between ${minHours} h and ${maxHours} h of ${originName}. Widen the range or choose another origin.`;
+
+  /** The one place the applied band changes: the slider and the form both go through it. */
+  function applyBand(next: HoursBand) {
+    setBand(next);
+    setMinText(String(next.minHours));
+    setMaxText(String(next.maxHours));
+    setBandError(null);
+  }
+
+  function applyTypedBand(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const parsed = parseHoursBand(minText, maxText);
+    if ("error" in parsed) {
+      setBandError(parsed.error);
+      return;
+    }
+    applyBand(parsed.band);
+  }
 
   return (
     <div className="flex flex-col gap-4">
       <div>
         <h1 className="text-2xl font-bold">Destinations</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Pick an origin and a travel time to see every city a train reaches
-          within it.
+          Pick an origin and a travel-time range to see the destinations a train
+          reaches between them.
         </p>
       </div>
 
@@ -151,24 +228,117 @@ export function MapView({
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             {/* The slider points at this label through aria-labelledby, which
-                Base UI forwards to its focusable range input. */}
-            <Label id="travel-hours-label">Travel time</Label>
-            <span className="text-sm font-medium tabular-nums">{hours} h</span>
+                Base UI forwards to its focusable range inputs. */}
+            <Label id="travel-band-label">Travel time</Label>
+            <span className="text-sm font-medium tabular-nums">
+              {minHours}–{maxHours} h
+            </span>
           </div>
           <Slider
-            id="travel-hours"
+            id="travel-band"
             className="py-2"
-            min={1}
-            max={12}
+            min={MIN_BAND_HOURS}
+            max={MAX_BAND_HOURS}
             step={1}
-            // An array value keeps the slider single-thumb; a scalar makes the
-            // shadcn wrapper's thumb-count fallback render two.
-            value={[hours]}
-            aria-labelledby="travel-hours-label"
-            onValueChange={(value) =>
-              setHours(Array.isArray(value) ? value[0] : value)
-            }
+            // An array value keeps the slider two-thumb: a scalar makes the
+            // shadcn wrapper's thumb-count fallback render a range it does not
+            // have, and a range is what a band needs.
+            value={[minHours, maxHours]}
+            aria-labelledby="travel-band-label"
+            onValueChange={(value) => {
+              const [min, max] = Array.isArray(value)
+                ? value
+                : [value, value];
+              applyBand({ minHours: min, maxHours: max });
+            }}
             format={{ style: "unit", unit: "hour", unitDisplay: "long" }}
+          />
+          {/* The slider cannot express a band it cannot draw, so the typed form
+              is the second way in: it is the only way to set a bound exactly and
+              it is where an unusable pair is reported. */}
+          <form
+            className="flex flex-wrap items-end gap-2 pt-1"
+            onSubmit={applyTypedBand}
+          >
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="band-min-hours" className="text-xs">
+                Minimum (h)
+              </Label>
+              <Input
+                id="band-min-hours"
+                className="h-8 w-20"
+                inputMode="numeric"
+                value={minText}
+                aria-invalid={bandError !== null}
+                aria-describedby={bandError ? "band-error" : undefined}
+                onChange={(event) => setMinText(event.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="band-max-hours" className="text-xs">
+                Maximum (h)
+              </Label>
+              <Input
+                id="band-max-hours"
+                className="h-8 w-20"
+                inputMode="numeric"
+                value={maxText}
+                aria-invalid={bandError !== null}
+                aria-describedby={bandError ? "band-error" : undefined}
+                onChange={(event) => setMaxText(event.target.value)}
+              />
+            </div>
+            <Button type="submit" size="sm" variant="outline">
+              Set
+            </Button>
+          </form>
+          {bandError && (
+            <p id="band-error" role="alert" className="text-xs text-destructive">
+              {bandError}
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-2 md:col-span-2">
+          <div className="flex items-center justify-between">
+            {/* Both thumbs point at this label, the way the travel-time slider's
+                single thumb points at its own. */}
+            <Label id="city-size-label">City size</Label>
+            <span className="text-sm font-medium tabular-nums">
+              {describeCitySize(sizeRange)}
+            </span>
+          </div>
+          <Slider
+            id="city-size"
+            className="py-2"
+            min={0}
+            max={CITY_SIZE_TOP_INDEX}
+            step={1}
+            // The thumbs travel over positions on `CITY_SIZE_STOPS` rather than
+            // over people. Population is not spread evenly — nine in ten of the
+            // places a train reaches are under 100,000 — so equal steps in
+            // people would leave every real choice in the first sliver of the
+            // track.
+            value={[sizeRange.minIndex, sizeRange.maxIndex]}
+            aria-labelledby="city-size-label"
+            onValueChange={(value) => {
+              const [min, max] = Array.isArray(value)
+                ? value
+                : [value, value];
+              setSizeRange({ minIndex: min, maxIndex: max });
+            }}
+            // Without this a screen reader reads the position itself ("3")
+            // rather than what the position means. The floor is the range that
+            // runs to the top of the scale, which is how `describeCitySize`
+            // words an open ceiling.
+            getAriaValueText={(_formatted, position, index) =>
+              index === 0
+                ? describeCitySize({
+                    minIndex: position,
+                    maxIndex: CITY_SIZE_TOP_INDEX,
+                  })
+                : describeCitySizeCeiling(position)
+            }
           />
         </div>
       </div>
@@ -186,7 +356,8 @@ export function MapView({
           <>
             <LoaderCircle className="size-4 animate-spin" aria-hidden />
             <span className="text-muted-foreground">
-              Loading cities reachable from {originName}…
+              Loading destinations between {minHours} h and {maxHours} h of{" "}
+              {originName}…
             </span>
           </>
         )}
@@ -204,11 +375,11 @@ export function MapView({
         )}
         {!loading && !error && response && (
           <span className="text-muted-foreground">
-            {reachableCount === 0
-              ? `No city is reachable within ${hours} h of ${originName}. Increase the travel time or choose another origin.`
-              : `${reachableCount} ${
-                  reachableCount === 1 ? "city" : "cities"
-                } reachable within ${hours} h of ${originName}.`}{" "}
+            {destinationCount === 0
+              ? noDestinations
+              : `${destinationCount} ${
+                  destinationCount === 1 ? "destination" : "destinations"
+                }${sizeClause} between ${minHours} h and ${maxHours} h of ${originName}.`}{" "}
             Estimates measured on {response.measuredOn}.
           </span>
         )}
@@ -218,13 +389,13 @@ export function MapView({
         <MapPlaceholder>
           {loading
             ? "Loading the map…"
-            : "No cities to draw — the request failed."}
+            : "No destinations to draw — the request failed."}
         </MapPlaceholder>
       ) : (
         <div className="isolate h-[60vh] min-h-[360px] w-full overflow-hidden rounded-xl border">
           <ReachMap
-            cities={cities}
-            originCityId={response.originCityId}
+            destinations={destinations}
+            origin={response.origin}
             originColor={ORIGIN_COLOR}
             cityColor={CITY_COLOR}
           />
