@@ -1,6 +1,12 @@
 import { Hono } from "hono";
 import { handle } from "hono/vercel";
-import { cityCount, measuredOn, reachableCities } from "@/lib/trains";
+import { parseHoursBand } from "@/lib/hours-band";
+import {
+  cityCount,
+  destinationsBetween,
+  measuredOn,
+  originCity,
+} from "@/lib/trains";
 
 export const runtime = "nodejs";
 
@@ -11,53 +17,50 @@ app.get("/health", async (c) => {
   return c.json({ status: "ok", cityCount: await cityCount() });
 });
 
-// The hours range is a product limit, not a data limit: `travel_time` is capped
-// at 12 hours, so a longer request could only return the same 12-hour result.
-const MIN_HOURS = 1;
-const MAX_HOURS = 12;
-const WHOLE_HOURS = /^\d+$/;
-
 /**
- * Reachability from one origin within a whole number of hours.
- * See `docs/data_notes.md` for what `minutes` means and how it is measured.
+ * Destinations reachable from one origin within a whole-hour travel-time band,
+ * both bounds inclusive. See `docs/data_notes.md` for what `minutes` means and
+ * how it is measured.
  */
 app.get("/reachable", async (c) => {
-  const origin = c.req.query("origin");
-  const hoursParam = c.req.query("hours");
+  const originParam = c.req.query("origin");
 
-  if (!origin) {
+  if (!originParam) {
     return c.json(
       { error: "origin is required, e.g. ?origin=2911298" },
       400,
     );
   }
-  if (!WHOLE_HOURS.test(hoursParam ?? "")) {
-    return c.json(
-      { error: `hours must be a whole number from ${MIN_HOURS} to ${MAX_HOURS}` },
-      400,
-    );
+
+  const parsed = parseHoursBand(
+    c.req.query("minHours"),
+    c.req.query("maxHours"),
+  );
+  if ("error" in parsed) {
+    return c.json({ error: parsed.error }, 400);
   }
-  const hours = Number(hoursParam);
-  if (hours < MIN_HOURS || hours > MAX_HOURS) {
+
+  // An unknown origin cannot be told apart from a band with nothing in it by an
+  // empty result, so it is looked up instead of inferred.
+  const origin = await originCity(originParam);
+  if (!origin) {
     return c.json(
-      { error: `hours must be a whole number from ${MIN_HOURS} to ${MAX_HOURS}` },
+      { error: `unknown origin ${originParam}; choose one of the origins on /map` },
       400,
     );
   }
 
-  const cities = await reachableCities(origin, hours * 60);
-  if (cities.length === 0) {
-    return c.json(
-      { error: `unknown origin ${origin}; choose one of the origins on /map` },
-      400,
-    );
-  }
+  const destinations = await destinationsBetween(
+    origin.cityId,
+    parsed.band.minHours * 60,
+    parsed.band.maxHours * 60,
+  );
 
   const measured = await measuredOn();
   return c.json({
     measuredOn: measured,
-    originCityId: origin,
-    cities,
+    origin,
+    destinations,
   });
 });
 

@@ -9,8 +9,8 @@ import { trainsConnection, trainsDataDir } from "@/lib/duckdb";
 const travelTimeParquet = path.join(trainsDataDir, "travel_time.parquet");
 const cityParquet = path.join(trainsDataDir, "city.parquet");
 
-/** A city the map draws, as returned by `GET /api/reachable`. */
-export type ReachableCity = {
+/** A city inside the requested travel-time band, as returned by `GET /api/reachable`. */
+export type Destination = {
   /** GeoNames id. A string because the ids are identifiers, not quantities. */
   cityId: string;
   name: string;
@@ -21,15 +21,26 @@ export type ReachableCity = {
 };
 
 /**
+ * Where a request starts. Kept apart from the destinations because the map draws
+ * it whatever the band is, and because it is never somewhere you travel to.
+ */
+export type Origin = {
+  /** GeoNames id, one of the ids `supportedOrigins()` returns. */
+  cityId: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+};
+
+/**
  * The `/api/reachable` response. Defined beside the SQL that fills it so the
  * route and the map client cannot drift apart.
  */
 export type ReachableResponse = {
   /** The timetable day the pipeline measured on, read from Parquet metadata. */
   measuredOn: string;
-  originCityId: string;
-  /** The origin is included, with `minutes` 0, so the map can mark it. */
-  cities: ReachableCity[];
+  origin: Origin;
+  destinations: Destination[];
 };
 
 /** An origin the pipeline actually measured, i.e. a `travel_time` origin. */
@@ -83,26 +94,60 @@ export async function measuredOn(): Promise<string> {
 }
 
 /**
- * Cities within `withinMinutes` of `originCityId`, the origin included at
- * `minutes` 0. Reachability is not stored, so it is this comparison — not a
- * precomputed flag — that the hours slider drives.
+ * The origin with this GeoNames id, or null when the pipeline never measured
+ * it. The join is what makes an id supported: `travel_time` only has rows for
+ * origins that produced measurable journeys, which is the same set
+ * `supportedOrigins()` lists.
  *
- * An unknown origin yields an empty list: every measured origin reaches itself,
- * so its own row is always present at any `withinMinutes` of at least 0.
+ * Existence is answered here rather than by an empty destination list, because a
+ * band that no destination falls into is a valid, empty result.
  */
-export async function reachableCities(
+export async function originCity(cityId: string): Promise<Origin | null> {
+  const connection = await trainsConnection();
+  const reader = await connection.runAndReadAll(
+    `SELECT c.city_id AS city_id, c.name AS name, c.latitude AS latitude,
+            c.longitude AS longitude
+     FROM read_parquet(?) AS c
+     JOIN read_parquet(?) AS t ON t.origin_city_id = c.city_id
+     WHERE c.city_id = ?
+     LIMIT 1`,
+    [cityParquet, travelTimeParquet, cityId],
+  );
+  const [row] = reader.getRowObjectsJS();
+  if (!row) return null;
+  return {
+    cityId: row.city_id as string,
+    name: row.name as string,
+    latitude: Number(row.latitude),
+    longitude: Number(row.longitude),
+  };
+}
+
+/**
+ * Destinations reachable from `originCityId` in at least `minMinutes` and at
+ * most `maxMinutes`, both bounds inclusive. The origin is not one of them: a
+ * destination is somewhere you travel to, and `travel_time` gives the origin its
+ * own row at 0 minutes only so that it can be drawn.
+ *
+ * Reachability is not stored, so it is this comparison — not a precomputed flag —
+ * that the band drives. An origin the pipeline never measured has no rows at all
+ * and therefore yields nothing.
+ */
+export async function destinationsBetween(
   originCityId: string,
-  withinMinutes: number,
-): Promise<ReachableCity[]> {
+  minMinutes: number,
+  maxMinutes: number,
+): Promise<Destination[]> {
   const connection = await trainsConnection();
   const reader = await connection.runAndReadAll(
     `SELECT t.city_id AS city_id, c.name AS name, c.latitude AS latitude,
             c.longitude AS longitude, t.minutes AS minutes
      FROM read_parquet(?) AS t
      JOIN read_parquet(?) AS c ON c.city_id = t.city_id
-     WHERE t.origin_city_id = ? AND t.minutes <= ?
+     WHERE t.origin_city_id = ? AND t.city_id <> t.origin_city_id
+       AND t.minutes >= ? AND t.minutes <= ?
      ORDER BY t.minutes, c.name`,
-    [travelTimeParquet, cityParquet, originCityId, withinMinutes],
+    [travelTimeParquet, cityParquet, originCityId, minMinutes, maxMinutes],
   );
   return reader.getRowObjectsJS().map((row) => ({
     cityId: row.city_id as string,
