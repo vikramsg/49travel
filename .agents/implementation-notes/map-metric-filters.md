@@ -202,16 +202,19 @@ FR 74,832 · IT 55,265 · LU 989 · NL 10,435 · PL 27,874.
 
 ### What the artifact holds
 
-4,922 cities. 1,358 have a Wikivoyage article, 2,505 are within 30 km of a World Heritage Site and 1,341
+4,922 cities. 1,358 have a Wikivoyage article, 2,631 are within 30 km of a World Heritage Site and 1,355
 have a station category — all of them German, since the category is Deutsche Bahn's. Every city has a
 sitelink count and a feature count, 0 when nothing was found. The largest values are Paris's 366 language
 editions, 39 World Heritage Sites near one city, and 869 mapped features within 5 km of one city.
+
+The site and station figures are 126 and 14 higher than the first build produced. The review section below
+has the reason, and it was a real defect rather than a rounding.
 
 ### API, against a production build
 
 From Hamburg over 0–6 h: **976** destinations with no filter — the same 976 as before the metrics existed,
 so the join changes nothing until a filter asks it to. Each filter alone: 80 with 100+ languages, 373 with
-a Wikivoyage article, 415 near a World Heritage Site, 45 with 100+ mapped features, 340 at station category
+a Wikivoyage article, 456 near a World Heritage Site, 45 with 100+ mapped features, 341 at station category
 4 or better. All five together: 14. A 400-language bound: 200 with no destinations. Four bad bounds —
 `maxDbStationCategory=8`, `maxDbStationCategory=0`, `minTourismPois=many`, `minUnescoSites=-1` — all 400,
 each naming its own parameter.
@@ -226,6 +229,42 @@ non-numeric bound reports "Mapped sights nearby must be a whole number", marks o
 `aria-invalid`, and points only that input at the message. Nothing overflows at 375 px. Evidence:
 `.agents/baseline/map-filters-applied-desktop.png`, `map-filters-rejected-desktop.png`,
 `map-filters-mobile.png`.
+
+## Review
+
+A background reviewer read both commits. Its two findings are below, with what was done about each, and so
+are the simplifications it tried and could not make.
+
+### Accepted
+
+| Finding | What changed |
+|---|---|
+| `geo.PointGrid` worked out its cell reach from the 111 km a degree of latitude is and used that one number for longitude too, so at northern latitudes it looked too few cells east and west and dropped points that were inside the radius | The two axes are now reached separately, the longitude one scaled by the cosine of the latitude. It was not a theoretical gap: rebuilding found **126 more** cities within 30 km of a World Heritage Site (2,505 → 2,631) and **14 more** with a station category (1,341 → 1,355). Two tests pin the boundary at 57 degrees north, and the comment claiming a narrower longitude window "only shrinks the candidate set" is gone — shrinking the candidate set before the exact test *is* the defect, because the test cannot recover a point it is never offered |
+| The `city_metrics` comment in the Makefile still described one Overpass query per country and claimed both sources were cached, when the build downloads Geofabrik extracts and re-reads Wikidata on every run | Rewritten to say what the build actually does |
+
+The east/west reach was also the one finding that changed committed data, so the artifact was rebuilt and
+both branches re-verified: 44 frontend tests, the API unchanged at 976 unfiltered, and the two affected
+filters recounted at 456 and 341.
+
+### Simplifications the reviewer tried and rejected
+
+- **Counting the World Heritage and station sets in DuckDB as well**, which would delete `PointGrid`.
+  Rejected: the split is reasonable — OpenStreetMap needs DuckDB and is large, the Wikidata sets are small
+  and pass into `build_metrics` as ordinary data — and moving them would add spatial setup for two otherwise
+  simple metrics. Fixing the reach was the smaller, safer change.
+- **Removing `geo.haversine_km`.** Rejected: it is genuinely shared by `links.py` and the in-memory metric
+  distances.
+- **Collapsing `lib/city-metric-filters.ts`.** Rejected: the spec table is what keeps the browser labels, the
+  server parsing and the off-rule aligned, and a smaller version would repeat one of those in three places.
+- **Sharing the metric form with the travel-time band form.** Rejected: the band's bounds are coupled and
+  apply continuously through its slider, while the metrics are independent and apply only on submit.
+
+### Checked and found correct
+
+SQL parameter order and the `LEFT JOIN` semantics the comments claim; filter independence with no score;
+`lib/city-metric-filters.ts` staying client-safe with `lib/trains.ts` as its only server consumer; the Python
+`trains` package not reaching into `travel49`; the three artifacts each holding 4,922 unique city ids; and
+the new form's labels, `aria-invalid`, `aria-describedby` and `role="alert"`.
 
 ## What to review
 
