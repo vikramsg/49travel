@@ -59,6 +59,65 @@ export const NO_METRIC_FILTERS: MetricFilters = {
   maxDbStationCategory: null,
 };
 
+/**
+ * What the map opens on, so its first view is the destinations worth travelling
+ * for rather than every stop the range reaches. The API's own default stays
+ * unfiltered: a caller asking for a band should get the band, and only the map
+ * chooses to open narrow.
+ *
+ * Two metrics narrow it, in this order: Wikipedia language editions first,
+ * which is the broad "is this place known at all" cut, and then the mapped
+ * sights within 5 km, which keeps the ones with something to see. Neither cut is
+ * picked, both are measured against the default view: 60 language editions
+ * leaves 227 of the 976 destinations Hamburg reaches in six hours and 228 of
+ * Berlin's 1032, and adding the 50-sight cut leaves 103 and 98.
+ *
+ * The other three metrics stay off. They are filters of their own rather than
+ * part of what "popular" means, so the map does not decide them for the visitor.
+ */
+export const DEFAULT_METRIC_FILTERS: MetricFilters = {
+  ...NO_METRIC_FILTERS,
+  minWikipediaSitelinks: 60,
+  minTourismPois: 50,
+};
+
+/** Every filter at its off value, as the form's text inputs start out. */
+export const EMPTY_METRIC_FILTER_TEXT: Record<MetricFilterName, string> = {
+  minWikipediaSitelinks: "",
+  minWikivoyageArticles: "",
+  minUnescoSites: "",
+  minTourismPois: "",
+  maxDbStationCategory: "",
+};
+
+/**
+ * The text a form starts on for a given set of filters, so a default that is not
+ * "off" still shows what it is when the form is opened.
+ */
+export function metricFilterText(filters: MetricFilters): Record<
+  MetricFilterName,
+  string
+> {
+  return {
+    minWikipediaSitelinks:
+      filters.minWikipediaSitelinks === 0
+        ? ""
+        : String(filters.minWikipediaSitelinks),
+    minWikivoyageArticles:
+      filters.minWikivoyageArticles === 0
+        ? ""
+        : String(filters.minWikivoyageArticles),
+    minUnescoSites:
+      filters.minUnescoSites === 0 ? "" : String(filters.minUnescoSites),
+    minTourismPois:
+      filters.minTourismPois === 0 ? "" : String(filters.minTourismPois),
+    maxDbStationCategory:
+      filters.maxDbStationCategory === null
+        ? ""
+        : String(filters.maxDbStationCategory),
+  };
+}
+
 /** One metric's filter: its label for a person, and the values it accepts. */
 export type MetricFilterSpec = {
   name: MetricFilterName;

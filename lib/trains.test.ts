@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_METRIC_FILTERS,
   MAX_SITELINK_FILTER,
   NO_METRIC_FILTERS,
 } from "@/lib/city-metric-filters";
@@ -124,6 +125,22 @@ describe("destination links", () => {
 });
 
 describe("metric filters", () => {
+  it("opens the map on a popular subset rather than every stop the range reaches", async () => {
+    const everything = await destinationsBetween(HAMBURG, 0, CAP_MINUTES);
+    const popular = await destinationsBetween(
+      HAMBURG,
+      0,
+      CAP_MINUTES,
+      DEFAULT_METRIC_FILTERS,
+    );
+
+    expect(popular.length).toBeGreaterThan(0);
+    // Measured at about a tenth of the range, so between a twentieth and a fifth
+    // is a band that fails if the default stops narrowing or over-narrows.
+    expect(popular.length).toBeGreaterThan(everything.length / 20);
+    expect(popular.length).toBeLessThan(everything.length / 5);
+  });
+
   it("narrows the band by a metric without changing the band itself", async () => {
     const band = await destinationsBetween(HAMBURG, 0, CAP_MINUTES);
     const famous = await destinationsBetween(HAMBURG, 0, CAP_MINUTES, {
