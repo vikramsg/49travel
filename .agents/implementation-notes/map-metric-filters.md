@@ -244,6 +244,13 @@ build of the same handler. Nothing overflows at 375 px, where the sidebar stacks
 `.agents/baseline/map-sidebar-default-desktop.png`, `map-sidebar-advanced-desktop.png`,
 `map-sidebar-mobile.png`.
 
+With the sliders open, six slider roots render: the travel-time band's with two thumbs, and each of the five
+metrics with exactly one, which is what confirms the one-element array is doing its job. They read
+`60 · Any · Any · 50 · Any`, the default. Eight `ArrowRight` presses on the language-editions thumb move it
+from 60 to 100 — the step is 5 — and the map answers with **66** destinations instead of 103 while the other
+four stay at `Any`. So a slider applies as it moves, which is the behaviour the number inputs had to be
+protected from.
+
 Two mistakes of my own are worth recording, because each made a check pass that should not have. The first
 verification run served a build from before the default changed, so it reported the single-metric default
 that had already been discarded. The second probed `aria-expanded` on the origin combobox rather than on the
@@ -281,6 +288,45 @@ than product ones, and both were caught by reading the numbers instead of trusti
   text and error state. `MapView` keeps only the applied filters, the request and the map.
 - **Why:** the draft must not redraw the map, so nothing outside the form needs to see it — which made the
   panel a natural unit. It also keeps `map-view.tsx` about the map as the sidebar markup grows it.
+- **Where:** `components/metric-filter-panel.tsx`.
+
+### 19. Every filter is a slider, so nothing needs an Apply button
+
+- **Decision:** the five metric filters are sliders, each from 0 to its metric's ceiling, with 0 as the
+  leftmost position reading "Any". A drag applies immediately. There is no Apply button and no error state,
+  and the text helpers the form used — `EMPTY_METRIC_FILTER_TEXT` and `metricFilterText` — are gone.
+- **Why:** a slider has no unusable position, so the whole concern the number inputs created — "a half-typed
+  bound must not redraw the map, and an unusable one is reported beside the input that holds it" —
+  disappears with them. Applying as it moves matches the travel-time band, and the request is aborted and
+  replaced on each change, so a drag leaves one answer rather than a queue. The two wide scales carry a step
+  of 5 — language editions and mapped sights — because their interesting region is near zero and a step of 1
+  would put the default at a few percent of the track.
+- **Where:** `components/metric-filter-panel.tsx`, `lib/city-metric-filters.ts` (`step`, `withMetricBound`).
+
+### 20. The map takes the height the viewport has left
+
+- **Decision:** at `lg` and above the map is `calc(100dvh - 18rem)` with a 420 px floor, instead of a fixed
+  `60vh`. The sidebar narrowed from 20rem to 18rem, the vertical gaps from 4 to 3, and the heading became one
+  line instead of a title above a sentence.
+- **Why:** the map was a fixed fraction of the window, so a taller window only added page below it. The chrome
+  around the map — top bar, heading, status line, legend — measures **308 px** at 1440x900, which leaves
+  18rem (288 px) short of a fit, so the heading was compacted to give the last of it back. Measured result at
+  1440x900: the map goes from 540 px tall to **612**, and with the default filters on the page fits with zero
+  overflow. At 1440x720, a shorter window than most laptops, the map is 432 px and the page still runs 62 px
+  long, because the sidebar's two cards set a floor under the grid row; that is left alone rather than shaving
+  the sidebar further, since 720 px tall is the short edge of the range this is for. `dvh` rather than `vh`,
+  because a mobile toolbar changes the height under a `vh` and not under a `dvh`; the rule only applies at
+  `lg`, where the sidebar is beside the map rather than above it.
+- **Where:** `components/map-view.tsx`, `.agents/UX.md`.
+
+### 21. A single bound is handed to the slider as a one-element array
+
+- **Decision:** each metric slider gets `value={[bound]}`, not `value={bound}`.
+- **Why:** the shadcn wrapper in `components/ui/slider.tsx` takes its thumb count from `value` when that is an
+  array, from `defaultValue` otherwise, and falls back to `[min, max]`. Handed a scalar it therefore renders
+  **two** thumbs for what is one bound. The travel-time band already passes an array, so this is the codebase's
+  established shape rather than a new workaround. The wrapper's fallback is the actual defect, and it was left
+  alone deliberately: another worktree has uncommitted changes to that same file.
 - **Where:** `components/metric-filter-panel.tsx`.
 
 ## Review
