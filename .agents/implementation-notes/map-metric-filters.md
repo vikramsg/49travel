@@ -1,0 +1,246 @@
+# Metric pipeline and filters — implementation notes
+
+Plan: `.agents/plans/map-metric-filters.md`. The plan file is frozen; this file records what was built,
+what was verified, and every decision not already agreed.
+
+Two pull requests, stacked on the destination-links PR:
+
+- `map-metrics-pipeline` — `city_metric.parquet`, one row of facts per city.
+- `map-metric-filters` — one optional filter per metric, in the API and on the map.
+
+## What the change had to achieve
+
+Five metrics, each exposed as its own filter, with **no combined score**. The scoring step was explicitly
+deferred, so nothing here weights one metric against another.
+
+## Files produced
+
+```
+python/src/trains/metrics.py             builds the metric artifact
+python/src/trains/geo.py                 haversine_km, and the radius index
+python/data/trains/city_metric.parquet   one row per city, one column per metric
+python/tests/test_metrics.py             the counting and the assembly
+python/Makefile                          `make city_metrics`
+python/src/trains/links.py               now also records the Wikidata item
+lib/city-metric-filters.ts               the bounds, the parser and the "off" rule
+lib/trains.ts                            joins the metrics and applies the bounds
+app/api/[[...route]]/route.ts            reads and validates the five parameters
+components/map-view.tsx                  one control per metric
+AGENTS.md, docs/data_notes.md, .agents/UX.md
+```
+
+## Decisions not already agreed
+
+Each item: the decision, why, and where it lives.
+
+### 1. The OSM features come from Geofabrik extracts read by DuckDB, not from Overpass
+
+- **Decision:** `tourism_pois` is counted from each country's Geofabrik `.osm.pbf`, read with DuckDB's
+  `ST_ReadOSM`, instead of from Overpass queries.
+- **Why:** the Overpass route was tried first and is recorded here because the reason matters.
+  - It was asked for a radius around each of 4,922 cities, which is thousands of queries.
+  - Batching by country still tripped Overpass's rate limit: the first attempt fetched Austria, Belgium and
+    Switzerland and then answered **HTTP 429 Too Many Requests**.
+  - `ST_ReadOSM` reads Luxembourg's 4.8 million elements in **0.1 s** and the tagged subset in 0.2 s, with no
+    rate limit and no config file, because DuckDB parses the PBF directly instead of GDAL's OSM driver.
+- **Where:** `python/src/trains/metrics.py` (`poi_sql`, `cache_pois`, `poi_counts`), `docs/data_notes.md`.
+
+### 2. `quackosm` could not be installed, so DuckDB's own reader does the same job
+
+- **Decision:** the pipeline depends on `duckdb` (with its `spatial` extension) and not on `quackosm`,
+  although the ask named QuackOSM.
+- **Why:** `uv add quackosm` fails on this project. QuackOSM depends on `geopandas`, which depends on
+  `pyproj`, and **`pyproj` publishes no wheel for Python 3.14** — the project pins `requires-python = ">=3.14"`
+  and CI installs that. `pyproj` therefore tries to build from source and stops at `proj executable not found`.
+  Installing PROJ locally via Homebrew would fix this machine and still fail CI. DuckDB's `ST_ReadOSM` is the
+  same idea QuackOSM is built on — DuckDB reading the PBF — so the pipeline got the behaviour without the
+  dependency. **If QuackOSM specifically is wanted, the project's Python pin has to come down to 3.13.**
+- **Where:** `python/pyproject.toml` (`duckdb`), `docs/data_notes.md`.
+
+### 3. Ways are placed at the average of the nodes they reference; relations are not resolved
+
+- **Decision:** nodes are read directly, a `way` is counted at the mean position of the nodes it joins, and a
+  `relation` is left out.
+- **Why:** `ST_ReadOSM` returns node coordinates but only element ids for ways and relations, so a way needs
+  one hop and a relation needs two. Most tourist features are nodes or buildings, so the second hop buys a few
+  multi-part sites rather than a class of places. Luxembourg confirms the scale of the loss: 1,004 tagged
+  elements, 989 counted.
+- **Where:** `python/src/trains/metrics.py` (`poi_sql`).
+
+### 4. `amenity=restaurant` is deliberately not a tourism feature
+
+- **Decision:** the POI tags are `tourism` in museum, attraction, viewpoint, gallery, zoo, theme park or
+  aquarium, and `historic` in castle, archaeological_site or ruins.
+- **Why:** the ask listed `amenity=restaurant` among its examples. Eateries are among the most mapped things
+  in OpenStreetMap, so including them would swamp the count and turn the metric into food density rather than
+  "things to go and look at", which is what the other four tags measure.
+- **Where:** `python/src/trains/metrics.py` (`POI_TAGS`), `docs/data_notes.md`.
+
+### 5. The radii are 30 km, 5 km and 10 km, and they are choices
+
+- **Decision:** 30 km for a World Heritage Site, 5 km for a tourism feature, 10 km for the station whose
+  category is used.
+- **Why:** a World Heritage Site is often outside the town that serves it; a tourism feature is counted where
+  it is walking distance from the centre; a station category belongs to a station, not to a town, so the
+  nearest classified one is the station a traveller would use. Each is documented beside its constant, and
+  none is derived from the data.
+- **Where:** `python/src/trains/metrics.py`, `docs/data_notes.md`.
+
+### 6. The Deutsche Bahn category comes from Wikidata `P5606`, listed by id
+
+- **Decision:** `db_station_category` is read from `P5606` (class of station), restricted to the seven class
+  ids `Q18681579`, `Q18681660`, `Q18681688`, `Q18681690`, `Q18681691`, `Q18681692`, `Q18681693`.
+- **Why:** the ask named the DB categories without naming a source; `P5606` is the property that carries them,
+  and it is used for per-country classes, so the ids are listed rather than the labels `"category 3 railway
+  station"` parsed. 3,055 German stations carry it. A station's nearest classified neighbour within 10 km is
+  used, because the pipeline's station ids are MOTIS regional ids (`de-rv_…`) and not DB codes, so there is no
+  id to join on.
+- **Where:** `python/src/trains/metrics.py` (`DB_STATION_CATEGORY`).
+
+### 7. Wikipedia sitelinks are read from the item the article resolved, not from the GeoNames id
+
+- **Decision:** `wikipedia_sitelinks` is `wikibase:sitelinks` for the item `city_link.parquet` recorded.
+- **Why:** the GeoNames id does not name the article-bearing item — that was established for the links PR and
+  is why the resolver goes by name. A sitelink count read from the GeoNames id's item would report 0 for
+  Munich.
+- **Where:** `python/src/trains/metrics.py` (`wikipedia_sitelinks`).
+
+### 8. Wikivoyage article *status* is not built; presence is
+
+- **Decision:** the Wikivoyage metric is "does an English Wikivoyage article exist", with no outline / usable /
+  guide / star grade, although the ask named the status.
+- **Why:** the status is not machine-readable. There is no Wikidata property for it — a property search for
+  "Wikivoyage status" returns nothing, and the ask's suggested `P1151` is "topic's main Wikimedia portal",
+  which is unrelated. The status is not in the article's lead section either: fetching the lead of Hamburg,
+  Berlin, Munich, Lüneburg, Heide and Preetz returned page-banner templates only, and the talk pages are
+  empty. Getting it would mean fetching and parsing article wikitext for a template that these articles do
+  not carry in a findable position.
+- **Where:** `python/src/trains/metrics.py`, `docs/data_notes.md`.
+
+### 9. `links.py` now records the Wikidata item — a change to the PR below this one
+
+- **Decision:** `city_link.parquet` gains a `wikidata_id` column, so the pipeline PR touches the resolver the
+  links PR introduced.
+- **Why:** the item is already in the API response the resolver reads (`pageprops.wikibase_item`), so recording
+  it costs nothing, and the alternative was asking the two wikis for the same pages a second time from
+  `metrics.py`. It also puts the item in the artifact that already exists to hold what was resolved from the
+  article. `links.py` was re-run; the counts are unchanged (3,975 Wikipedia, 1,358 Wikivoyage).
+- **Where:** `python/src/trains/links.py`.
+
+### 10. Two counting mechanisms: the radius index for Wikidata's sets, DuckDB for OpenStreetMap's
+
+- **Decision:** `geo.PointGrid` counts the World Heritage Sites and the stations; DuckDB counts the OSM
+  features.
+- **Why:** the Wikidata sets are 3,398 and 3,055 points, which the index handles in about a second; the OSM
+  features run to hundreds of thousands per country, which is what DuckDB is for. `haversine_km` is shared by
+  both. The alternative is doing all three in DuckDB, which would delete about eighty lines of index and its
+  tests — flagged for review.
+- **Where:** `python/src/trains/geo.py`, `python/src/trains/metrics.py`.
+
+### 11. Every filter is a numeric bound, one per metric, and absent means unfiltered
+
+- **Decision:** the API takes `minWikipediaSitelinks`, `minWikivoyageArticles`, `minUnescoSites`,
+  `minTourismPois` and `maxDbStationCategory`. Each is optional. A blank or absent bound asks nothing of its
+  metric; `0` means the same as absent; the station category has no `0`, so only absent means unfiltered.
+- **Why:** uniform parameters are one validation rule instead of five, and a bound is what a threshold metric
+  actually is. `activeMetricBound` is the single place the "off" rule lives, so the SQL, the query string and
+  the form cannot disagree about what an unfiltered metric looks like.
+- **Where:** `lib/city-metric-filters.ts`.
+
+### 12. A filter that asks about a metric excludes a city with no value for it
+
+- **Decision:** once a metric is filtered, a city the pipeline has no value for is dropped. With no filter, it
+  stays.
+- **Why:** the join is a `LEFT JOIN` and every clause is omitted at its "off" value, so a city with no row is
+  only reached by a comparison against NULL, which is not true. For the station category this is the intent:
+  the category is Deutsche Bahn's, so setting it hides every city outside Germany, which is what "hide the
+  small stops" means.
+- **Where:** `lib/trains.ts` (`destinationsBetween`).
+
+### 13. The form is number inputs with one Apply, and the filters are named when the map empties
+
+- **Decision:** one number input per metric with the metric's label, `Clear` beside `Apply filters`, a visible
+  count of active filters, and an empty result that says the filters are why.
+- **Why:** it reuses the primitives that exist (`Input`, `Label`, `Button`) and the pattern the travel-time
+  form already set, where a half-typed bound applies only on submit. Naming the filters matters because
+  "widen the range" is wrong advice when a filter emptied the map.
+- **Where:** `components/map-view.tsx`, `.agents/UX.md`.
+
+### 14. No metric value is shown on a destination, and no filter is on by default
+
+- **Decision:** the popup is unchanged, and the map opens unfiltered.
+- **Why:** the ask was to show the *filters*. The ask also mentioned a default threshold ("keep the map
+  clean"), but every threshold it suggested is a score, and the score was deferred. Both are recorded as
+  review questions rather than guessed at.
+- **Where:** `components/map-view.tsx`.
+
+### 15. Every filter ceiling sits above the largest value the artifact holds
+
+- **Decision:** the ceilings are 400 language editions, 40 World Heritage Sites and 1,000 mapped features;
+  the station category keeps its natural 1–7.
+- **Why:** the first values written were 300, 10 and 2,000 — round numbers chosen before the artifact
+  existed. Once it did, two of them turned out to be **below** the data: Paris has 366 language editions and
+  one city has 39 World Heritage Sites within 30 km. So the strongest filter the data supports could not be
+  asked for, and the test that a filter can empty the map would not have emptied it. Each ceiling is now
+  above today's maximum, and the comment beside it records what that maximum is.
+- **Where:** `lib/city-metric-filters.ts`.
+
+## Verification
+
+| Check | Result |
+|---|---|
+| `make -C python lint` / `check` | clean (ruff format, ruff check, `ty`) |
+| `make -C python test` | 42 passed |
+| `npm run lint` | clean |
+| `npm test` | 44 passed, 3 files |
+| `npm run build` | clean |
+| `ST_ReadOSM` on Luxembourg | 4.8M elements in 0.1 s; 989 tourist features in 0.4 s |
+| `make -C python city_metrics` | 1 minute 7 seconds; 341,082 features cached across 11 countries |
+
+The OSM step, per country: AT 13,925 · BE 7,411 · CH 11,837 · CZ 14,000 · DE 93,211 · DK 30,231 ·
+FR 74,832 · IT 55,265 · LU 989 · NL 10,435 · PL 27,874.
+
+### What the artifact holds
+
+4,922 cities. 1,358 have a Wikivoyage article, 2,505 are within 30 km of a World Heritage Site and 1,341
+have a station category — all of them German, since the category is Deutsche Bahn's. Every city has a
+sitelink count and a feature count, 0 when nothing was found. The largest values are Paris's 366 language
+editions, 39 World Heritage Sites near one city, and 869 mapped features within 5 km of one city.
+
+### API, against a production build
+
+From Hamburg over 0–6 h: **976** destinations with no filter — the same 976 as before the metrics existed,
+so the join changes nothing until a filter asks it to. Each filter alone: 80 with 100+ languages, 373 with
+a Wikivoyage article, 415 near a World Heritage Site, 45 with 100+ mapped features, 340 at station category
+4 or better. All five together: 14. A 400-language bound: 200 with no destinations. Four bad bounds —
+`maxDbStationCategory=8`, `maxDbStationCategory=0`, `minTourismPois=many`, `minUnescoSites=-1` — all 400,
+each naming its own parameter.
+
+### Browser
+
+All five controls render. Applying three of them narrows the map to 49 destinations, the status line says
+"narrowed by 3 filters", and the map itself states "Showing destinations with Wikipedia languages at least
+100; Wikivoyage articles at least 1; Station category at most 4." An impossible bound leaves the origin alone
+on the map, and the status names the filters as the cause rather than suggesting a wider range. A
+non-numeric bound reports "Mapped sights nearby must be a whole number", marks only its own input
+`aria-invalid`, and points only that input at the message. Nothing overflows at 375 px. Evidence:
+`.agents/baseline/map-filters-applied-desktop.png`, `map-filters-rejected-desktop.png`,
+`map-filters-mobile.png`.
+
+## What to review
+
+1. **Decision 2 — `quackosm` was not used.** The ask named it and the reason is a Python-version wall in
+   `pyproj`. Decide whether to lower the project's Python pin to 3.13 for it, or to accept DuckDB's reader.
+2. **Decision 1 and 4 — the OSM metric itself.** The tag set leaves out `amenity=restaurant`; the radius is
+   5 km; ways are placed at a mean and relations are skipped. Any of these changes what the number means, and
+   the number is the whole of the filter.
+3. **Decision 8 — no Wikivoyage grade.** This is the one asked-for metric that is not built, because the
+   grade is not machine-readable. Decide whether to drop it, or to pay for wikitext parsing.
+4. **Decision 10 — two counting mechanisms.** Unifying on DuckDB would delete `PointGrid` and its tests.
+5. **Decision 12 — non-German cities vanish when the station filter is set.** That is the consequence of a
+   German-only metric; decide whether the filter should instead apply only within Germany.
+6. **Decision 14 — no values shown and no default filter.** Both were mentioned in the ask and both are
+   guesses about product, so neither was made.
+7. **Decision 9 — a resolver change inside the pipeline PR.** It belongs to the PR below it in the stack.
+8. **The coverage numbers.** How many cities get each metric is a data question, not a code question, and the
+   numbers are in `docs/data_notes.md`.
