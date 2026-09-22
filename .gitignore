@@ -52,6 +52,9 @@ __pycache__/
 # GeoNames dump, downloaded by trains.city
 python/data/geonames/
 
+# OpenStreetMap POI dumps, downloaded by trains.metrics
+python/data/pois/
+
 # Playwright CLI output (may contain credentials)
 .playwright-cli/
 

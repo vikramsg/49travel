@@ -4,7 +4,7 @@ define REQUIRE
   $(if $(value $(1)),,$(error $(1) is required))
 endef
 
-.PHONY: check lint test city_json city_links
+.PHONY: check lint test city_json city_links city_metrics
 
 help:
 	@echo "check - run formatting, lint and type checks"
@@ -12,6 +12,7 @@ help:
 	@echo "test - run the tests"
 	@echo "city_json - write the euro 49 JSON for CITY. Requires CITY argument"
 	@echo "city_links - resolve every map city's Wikipedia and Wikivoyage article"
+	@echo "city_metrics - one row of facts per city for the map's filters"
 
 check:
 	uv run ruff format --check
@@ -33,3 +34,8 @@ city_json:
 # the app never resolves a link at request time.
 city_links:
 	uv run python -m trains.links
+
+# Needs network: Wikidata for the item counts and one Overpass query per country.
+# Both are cached under `data/`, and only the per-city counts are committed.
+city_metrics:
+	uv run python -m trains.metrics

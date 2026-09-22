@@ -14,13 +14,15 @@ pages and places that merely share a name.
 A city whose article fails either test gets no link, and the map omits it. That
 is deliberate: a missing link is a smaller lie than a link to somewhere else.
 
-The result is committed, so the map never resolves a link at request time.
+The result is committed, so the map never resolves a link at request time. Each
+accepted Wikipedia article also brings its Wikidata item, the handle the metrics
+build reads sitelink counts from — the item is already in the same response, so
+recording it costs no extra request.
 """
 
 from __future__ import annotations
 
 import json
-import math
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
@@ -29,6 +31,7 @@ from pathlib import Path
 import pyarrow as pa
 
 from trains.city import CITY_PARQUET, read_dataset, write_dataset
+from trains.geo import haversine_km
 
 WIKI_API = {
     "wikipedia_url": "https://en.wikipedia.org/w/api.php",
@@ -60,23 +63,24 @@ class CityPlace:
 
 @dataclass(frozen=True)
 class CityLink:
-    """The articles found for one city. Either may be absent."""
+    """The articles found for one city, and the item the Wikipedia one is about.
+
+    Either article may be absent. `wikidata_id` is the item the Wikipedia article
+    is about, so it is absent exactly when the Wikipedia article is.
+    """
 
     city_id: str
     wikipedia_url: str | None
     wikivoyage_url: str | None
+    wikidata_id: str | None
 
 
-def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    radius = 6371.0
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    delta_phi = phi2 - phi1
-    delta_lambda = math.radians(lon2 - lon1)
-    a = (
-        math.sin(delta_phi / 2) ** 2
-        + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
-    )
-    return 2 * radius * math.asin(math.sqrt(a))
+@dataclass(frozen=True)
+class _Article:
+    """An article a wiki accepted, with the Wikidata item it is about."""
+
+    url: str
+    wikidata_id: str | None
 
 
 def _query(api: str, params: dict[str, str]) -> dict:
@@ -95,9 +99,9 @@ def _final_title(name: str, followed: dict[str, str]) -> str:
     return title
 
 
-def _article_urls(api: str, places: list[CityPlace]) -> dict[str, str]:
-    """city_id -> article URL, for the places whose article passed both checks."""
-    found: dict[str, str] = {}
+def _articles(api: str, places: list[CityPlace]) -> dict[str, _Article]:
+    """city_id -> article, for the places whose article passed both checks."""
+    found: dict[str, _Article] = {}
     names = sorted({place.name for place in places})
     for start in range(0, len(names), TITLES_PER_REQUEST):
         chunk = names[start : start + TITLES_PER_REQUEST]
@@ -134,7 +138,7 @@ def _article_urls(api: str, places: list[CityPlace]) -> dict[str, str]:
             coordinates = page.get("coordinates") or []
             if not coordinates:
                 continue
-            distance = _haversine_km(
+            distance = haversine_km(
                 place.latitude,
                 place.longitude,
                 coordinates[0]["lat"],
@@ -142,7 +146,9 @@ def _article_urls(api: str, places: list[CityPlace]) -> dict[str, str]:
             )
             if distance > MATCH_RADIUS_KM:
                 continue
-            found[place.city_id] = page["fullurl"]
+            found[place.city_id] = _Article(
+                page["fullurl"], page.get("pageprops", {}).get("wikibase_item")
+            )
 
         print(f"  {api}: {min(start + TITLES_PER_REQUEST, len(names))}/{len(names)}")
 
@@ -151,15 +157,20 @@ def _article_urls(api: str, places: list[CityPlace]) -> dict[str, str]:
 
 def resolve_city_links(places: list[CityPlace]) -> list[CityLink]:
     """One link record per place, in the order given."""
-    urls = {column: _article_urls(api, places) for column, api in WIKI_API.items()}
-    return [
-        CityLink(
-            place.city_id,
-            urls["wikipedia_url"].get(place.city_id),
-            urls["wikivoyage_url"].get(place.city_id),
+    articles = {column: _articles(api, places) for column, api in WIKI_API.items()}
+    links: list[CityLink] = []
+    for place in places:
+        wikipedia = articles["wikipedia_url"].get(place.city_id)
+        wikivoyage = articles["wikivoyage_url"].get(place.city_id)
+        links.append(
+            CityLink(
+                city_id=place.city_id,
+                wikipedia_url=wikipedia.url if wikipedia else None,
+                wikivoyage_url=wikivoyage.url if wikivoyage else None,
+                wikidata_id=wikipedia.wikidata_id if wikipedia else None,
+            )
         )
-        for place in places
-    ]
+    return links
 
 
 def read_places(path: Path = CITY_PARQUET) -> list[CityPlace]:
@@ -187,6 +198,7 @@ def city_link_table(links: list[CityLink]) -> pa.Table:
             "wikivoyage_url": pa.array(
                 [link.wikivoyage_url for link in links], pa.string()
             ),
+            "wikidata_id": pa.array([link.wikidata_id for link in links], pa.string()),
         }
     )
 
