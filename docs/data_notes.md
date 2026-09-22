@@ -1,8 +1,8 @@
 # Map tab data
 
-The map tab answers "from city X, what can I reach by train within Y hours?".
-This document describes the Parquet it reads, what the numbers mean, and how
-they are produced. The feeds themselves are documented in [`feeds.md`](feeds.md).
+The map tab answers "from city X, what can I reach by train in a travel-time
+range?". This document describes the Parquet it reads, what the numbers mean, and
+how they are produced. The feeds themselves are documented in [`feeds.md`](feeds.md).
 
 ## Files
 
@@ -37,9 +37,12 @@ train reaches.
   toward zero.
 - The cap is 12 hours (720 minutes). A destination nothing reaches within the
   cap has no row at all.
-- The origin is its own destination, with `minutes` 0, so the map can mark it.
+- The origin has its own row at `minutes` 0, which is what lets the map draw it.
+  It is not a destination: the API carries it in its own field, and the
+  destinations are always somewhere else.
 - Reachability is **not** stored. The API computes it as
-  `minutes <= hours * 60` when the slider moves.
+  `minHours * 60 <= minutes <= maxHours * 60` when the slider or the min/max form
+  moves.
 
 The measurement day is in the Parquet file metadata under `measurement_date`,
 because a `minutes` value cannot be read without knowing the timetable it came

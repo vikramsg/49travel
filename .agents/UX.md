@@ -22,8 +22,9 @@ not in the test suite.
 | control | must do |
 |---|---|
 | origin selector | opens; lists every origin; shows the current choice when closed; arrow keys and Enter select; Escape and outside-click close; focus returns to the trigger; changing it redraws the map |
-| hours slider | drag and keyboard both work; the current value is shown as text beside it; both ends are reachable; changing it redraws without a page reload |
-| map | fills its container at any window size; one marker per reachable city; clicking a marker shows the city name and the time; pan and zoom stay usable; the origin itself is shown distinctly |
+| travel-time band | the slider has two thumbs, each reachable by drag and keyboard; the applied range is shown as text beside it; changing it redraws without a page reload |
+| min/max form | both bounds take typed whole hours; a usable pair applies on submit; an unusable pair — not a whole number, off the 0–12 scale, or a minimum above the maximum — is reported beside the inputs and leaves the map on the last usable range |
+| map | fills its container at any window size; one marker per destination in the range; clicking a marker shows the city name and the time; pan and zoom stay usable; the origin is shown distinctly and stays visible at every range |
 | tab bar | switching tabs does not reload the page; the active tab is distinguishable without relying on colour alone |
 
 ## Rules that make it easy to use
@@ -31,8 +32,8 @@ not in the test suite.
 1. **No dead ends.** Every empty and error state says what to do next.
 2. **The current value is always visible.** Never make the user remember what they
    chose.
-3. **State is preserved.** Changing the hours keeps the origin; changing the
-   origin keeps the hours.
+3. **State is preserved.** Changing the range keeps the origin; changing the
+   origin keeps the range.
 4. **Sensible defaults on first load**, so the map is never blank for no reason.
 5. **No surprise navigation.** Nothing moves the user to another page unasked.
 6. **Human units.** "6 h 15 min", never "375".
