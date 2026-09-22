@@ -35,7 +35,10 @@ city_json:
 city_links:
 	uv run python -m trains.links
 
-# Needs network: Wikidata for the item counts and one Overpass query per country.
-# Both are cached under `data/`, and only the per-city counts are committed.
+# Needs network: Wikidata for the item counts and each country's OpenStreetMap
+# extract. An extract is downloaded once, its matching coordinates are cached
+# under `data/`, and the extract is then deleted. Only the per-city counts are
+# committed, and only the extracts are cached — the Wikidata answers are read
+# afresh on every build.
 city_metrics:
 	uv run python -m trains.metrics

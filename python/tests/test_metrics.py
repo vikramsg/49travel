@@ -16,6 +16,10 @@ from trains.metrics import (
 # can say how far outside a radius a fixture sits without a distance helper.
 HAMBURG = City("2911298", "DE", 53.55, 9.99)
 BERLIN = City("2950159", "DE", 52.52, 13.40)
+# Copenhagen, at a latitude where a degree of longitude is 60 km and not 111. A
+# radius search that reached as far east and west as it does north and south
+# would drop points that are inside the radius.
+COPENHAGEN = City("2618425", "DK", 57.0, 0.0)
 
 # Q1055 is Hamburg, Q64 is Berlin.
 LINKS = {
@@ -132,3 +136,17 @@ def test_leaves_the_station_category_empty_when_no_classified_station_is_near():
 
     # 16.7 km away, past the 10 km the category is claimed over.
     assert metric.db_station_category is None
+
+
+def test_counts_a_heritage_site_east_of_a_northern_city():
+    # 0.40 degrees of longitude at 57 north is 24.2 km, inside the 30 km.
+    metric = build_one(COPENHAGEN, unesco=[(57.0, 0.40)])
+
+    assert metric.unesco_sites == 1
+
+
+def test_takes_a_station_east_of_a_northern_city():
+    # 0.16 degrees of longitude at 57 north is 9.7 km, inside the 10 km.
+    metric = build_one(COPENHAGEN, stations=[(57.0, 0.16, 3)])
+
+    assert metric.db_station_category == 3

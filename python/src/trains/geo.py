@@ -34,10 +34,9 @@ class PointGrid:
     hundred pairs per city.
     """
 
-    # 0.05 degrees is about 5.6 km of latitude, so a 5 km radius reaches at most
-    # two cells away. A cell is narrower in longitude as latitude rises, which
-    # only shrinks the candidate set; the distance test rejects whatever the
-    # cells over-reach.
+    # 0.05 degrees is about 5.6 km of latitude. A cell is narrower than that in
+    # longitude as latitude rises, so the two axes are reached separately; see
+    # `_neighbours`.
     CELL_DEGREES = 0.05
 
     def __init__(self, points: list[tuple[float, float]]) -> None:
@@ -57,11 +56,27 @@ class PointGrid:
     def _neighbours(
         self, latitude: float, longitude: float, radius_km: float
     ) -> Iterator[tuple[float, float, int]]:
-        """The indexed points in the cells `radius_km` could reach, and no others."""
-        reach = math.ceil(radius_km / (111.0 * self.CELL_DEGREES))
+        """The indexed points in the cells `radius_km` could reach, and no others.
+
+        The two axes are reached separately, because a degree means different
+        distances in each. A degree of latitude is about 111 km everywhere, but a
+        degree of longitude shrinks with latitude — at 57 degrees north it is
+        60 km — so a single reach computed from 111 km would look too few cells
+        east and west and drop points that are inside the radius. The exact
+        distance test below can only reject candidates it is offered; it cannot
+        recover one that was never looked at.
+        """
+        lat_reach = math.ceil(radius_km / (111.0 * self.CELL_DEGREES))
+        # Clamped so a query at the pole stays finite. The cosine there is tiny,
+        # which makes the reach very wide — correct, if slow, and the map stops
+        # well short of it.
+        km_per_degree_longitude = 111.0 * math.cos(
+            math.radians(min(abs(latitude), 89.0))
+        )
+        lon_reach = math.ceil(radius_km / (km_per_degree_longitude * self.CELL_DEGREES))
         lat_cell, lon_cell = self._cell(latitude, longitude)
-        for lat_offset in range(-reach, reach + 1):
-            for lon_offset in range(-reach, reach + 1):
+        for lat_offset in range(-lat_reach, lat_reach + 1):
+            for lon_offset in range(-lon_reach, lon_reach + 1):
                 yield from self._cells.get(
                     (lat_cell + lat_offset, lon_cell + lon_offset), ()
                 )
