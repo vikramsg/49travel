@@ -13,7 +13,7 @@ python_json:
 	$(call REQUIRE,CITY)
 	$(MAKE) -C python/ city_json CITY=$(CITY)
 
+# The Next app imports the generated JSON from python/data/travel49 directly,
+# so there is no copy step: regenerating the file is what the app reads.
 city_json: python_json
-	@echo "Creating json for $(CITY)"
-	@$(eval LOWERCASE_CITY := $(shell echo $(CITY) | tr '[:upper:]' '[:lower:]'))
-	cp python/data/travel49/$(LOWERCASE_CITY).json src/data
+	@echo "Created json for $(CITY)"
