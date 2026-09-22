@@ -21,7 +21,6 @@ import {
   citySizeBounds,
   describeCitySize,
   describeCitySizeCeiling,
-  describeCitySizeFloor,
   type CitySizeRange,
 } from "@/lib/city-size";
 import {
@@ -329,10 +328,15 @@ export function MapView({
               setSizeRange({ minIndex: min, maxIndex: max });
             }}
             // Without this a screen reader reads the position itself ("3")
-            // rather than what the position means.
+            // rather than what the position means. The floor is the range that
+            // runs to the top of the scale, which is how `describeCitySize`
+            // words an open ceiling.
             getAriaValueText={(_formatted, position, index) =>
               index === 0
-                ? describeCitySizeFloor(position)
+                ? describeCitySize({
+                    minIndex: position,
+                    maxIndex: CITY_SIZE_TOP_INDEX,
+                  })
                 : describeCitySizeCeiling(position)
             }
           />

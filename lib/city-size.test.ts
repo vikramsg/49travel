@@ -10,7 +10,6 @@ import {
   citySizeBounds,
   describeCitySize,
   describeCitySizeCeiling,
-  describeCitySizeFloor,
   parseCitySize,
 } from "@/lib/city-size";
 
@@ -59,8 +58,8 @@ describe("describeCitySize", () => {
     );
   });
 
-  it("reads an open bottom as 'under'", () => {
-    expect(describeCitySize({ minIndex: 0, maxIndex: 4 })).toBe("under 250,000");
+  it("reads a closed top inclusively, the way it filters", () => {
+    expect(describeCitySize({ minIndex: 0, maxIndex: 4 })).toBe("up to 250,000");
   });
 
   it("reads a closed range as two bounds", () => {
@@ -71,9 +70,13 @@ describe("describeCitySize", () => {
 });
 
 describe("the per-thumb wording", () => {
-  it("names what the lower thumb means on its own", () => {
-    expect(describeCitySizeFloor(0)).toBe("any size");
-    expect(describeCitySizeFloor(2)).toBe("50,000 or more");
+  it("names the lower thumb as the range that runs to the top of the scale", () => {
+    expect(
+      describeCitySize({ minIndex: 0, maxIndex: CITY_SIZE_TOP_INDEX }),
+    ).toBe("any size");
+    expect(
+      describeCitySize({ minIndex: 2, maxIndex: CITY_SIZE_TOP_INDEX }),
+    ).toBe("50,000 or more");
   });
 
   it("names what the upper thumb means on its own", () => {
@@ -113,5 +116,16 @@ describe("parseCitySize", () => {
 
   it("rejects a negative bound", () => {
     expect(parseCitySize("-1", undefined)).toHaveProperty("error");
+  });
+
+  it("rejects a bound too large for the column to hold", () => {
+    // Above 2^63-1 the database binder throws, which would surface as a 500
+    // rather than the 400 this parser exists to produce.
+    expect(parseCitySize(undefined, "9300000000000000000")).toHaveProperty(
+      "error",
+    );
+    expect(parseCitySize("10000000000000000000", undefined)).toHaveProperty(
+      "error",
+    );
   });
 });

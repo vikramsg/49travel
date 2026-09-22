@@ -1,6 +1,6 @@
 // The city-size range that the map's slider and `/api/reachable` both work in.
-// Defined once, like `lib/hours-band.ts`, so the positions the slider shows and
-// the bounds the server filters on cannot disagree.
+// Defined once, like `lib/hours-band.ts`, so the slider's scale and the route's
+// bounds are described in one place.
 //
 // Population is not spread evenly: nine in ten of the places a train reaches are
 // under 100,000, and the largest is 3,400,000. A slider over that span would
@@ -68,19 +68,9 @@ export function describeCitySize(range: CitySizeRange): string {
       : `${PEOPLE.format(minPopulation)} or more`;
   }
   if (minPopulation === 0) {
-    return `under ${PEOPLE.format(maxPopulation)}`;
+    return `up to ${PEOPLE.format(maxPopulation)}`;
   }
   return `${PEOPLE.format(minPopulation)}–${PEOPLE.format(maxPopulation)}`;
-}
-
-/**
- * What the lower thumb's position means read on its own, which is what a screen
- * reader announces while that thumb holds focus.
- */
-export function describeCitySizeFloor(index: number): string {
-  return index === 0
-    ? "any size"
-    : `${PEOPLE.format(CITY_SIZE_STOPS[index])} or more`;
 }
 
 /** What the upper thumb's position means read on its own. */
@@ -122,6 +112,21 @@ export function parseCitySize(
 
   const minPopulation = minText ? Number(minText) : 0;
   const maxPopulation = maxText ? Number(maxText) : null;
+
+  // A bound has to survive the trip into the 64-bit `population` column. A digit
+  // string too long for a JS integer to hold exactly would reach the database and
+  // come back as a 500 rather than as this 400, which is the only reason a bound
+  // is refused for its size.
+  if (!Number.isSafeInteger(minPopulation)) {
+    return {
+      error: `minPopulation (${minText}) is too large to use as a bound`,
+    };
+  }
+  if (maxPopulation !== null && !Number.isSafeInteger(maxPopulation)) {
+    return {
+      error: `maxPopulation (${maxText}) is too large to use as a bound`,
+    };
+  }
 
   if (maxPopulation !== null && minPopulation > maxPopulation) {
     return {
