@@ -232,3 +232,57 @@ In rough order of how much the answer matters.
 9. The doc set: `AGENTS.md`, `docs/data_notes.md` and `.agents/UX.md` were each updated. Check that no
    sentence about "within Y hours" survived, and that the UX checklist's new rows describe what the controls
    actually do.
+
+## Review
+
+A background reviewer read commit `413264c` and reported no correctness bug, no
+simplification worth making and no layer violation. Its other findings are
+recorded below as accepted or declined, each with the reason.
+
+### Accepted
+
+| Finding | What changed |
+|---|---|
+| `MIN_BAND_HOURS`'s comment still described the old model, where a range starting at 0 contained the origin | Rewritten: the scale's floor is 0 because every destination is measured at 1 minute or more and the origin alone has a 0-minute row |
+| `AGENTS.md` claimed the slider and the form "use the same parser"; the slider uses only the scale constants | Now says they share the scale and bounds rule |
+| The parser returned one message per problem, written for an API caller, and the form rendered it verbatim — so typing 7 and 6 reported "minHours (7) must not exceed maxHours (6)" and an empty bound suggested "?minHours=0&maxHours=6" | The parser now reports which rule failed and each surface words it: the route keeps the parameter names and the example, the form speaks to the person typing |
+| `ReachableResponse` was imported by neither consumer, so the type's "so the route and the map client cannot drift apart" comment was aspirational | The route annotates its payload with it |
+| The supported-origin join was only weakly pinned: `origin=1` is not in `city.parquet` at all, so a lookup that dropped the join to `travel_time` would still pass while accepting a never-measured origin | Added `originCity("2875115")` — Lüneburg, confirmed present in `city.parquet` and absent from `travel_time.origin_city_id` — and the matching route `400` |
+| The route's serialization of the origin's coordinates was untested, though the map depends on it | The `200` body now asserts finite `latitude` and `longitude` |
+| No accepted case at the top of the scale, only a rejection | Added 12–12, asserting every destination is exactly 720 minutes |
+| A test named for `originCity` actually exercised `supportedOrigins` | Renamed to say what it asserts |
+
+The reviewer's own first choice was the join test, which is the first thing added.
+
+### Declined
+
+| Finding | Why |
+|---|---|
+| "No `.agents/implementation-notes/` exists for this change, which `AGENTS.md` requires" | They exist, on the records branch (#31), which is where the plans and notes are kept so the feature diffs stay clean. The reviewer could not see that branch. The frozen plan still showing `?hours=6` is expected: plans are not edited once implementation starts. |
+| The status element switches `role` between `status` and `alert` on one node while keeping `aria-live="polite"` | Pre-existing, untouched by this commit, and the reviewer rated it low confidence. Changing it would alter the announcement behaviour of the retry path that already ships. |
+| `Origin` and `Destination` could share a shape through `Omit<Destination, "minutes">` | Couples the origin to the destination for no gain in reading. |
+
+### What the simplification pass could not cut
+
+The reviewer specifically tried the two obvious pressures and found nothing to
+remove: whether the applied range and the typed draft could collapse into one
+state (no — the draft must not apply on each keystroke, and the slider must write
+back into it), and whether a `components/ui/` primitive was bypassed (no —
+`Input`, `Label`, `Slider` and `Button` are all reused, and there is no two-bound
+form primitive to reuse). It also confirmed `lib/hours-band.ts` has to stay a
+separate, client-safe module rather than a section of `lib/trains.ts`.
+
+## Records branch rebase
+
+`agent-records` (PR #31) was still based on `6d7ca59`, the `main` that predates
+the merged stack, so its tree was the old Create React App: no `app/`, no
+`components/`, and a stale CRA-era `pnpm-lock.yaml` beside the CRA-era
+`package.json`. Vercel picked pnpm for that tree and failed with
+`ERR_PNPM_OUTDATED_LOCKFILE`. The branch was rebased onto the current `main`, so
+its tree is now `main` plus the records, its Vercel build is the current Next
+app, and its pull-request diff is unchanged.
+
+## Post-review wiring
+
+`.github/workflows/frontend.yaml` ran on the pull request and passed, so the
+tests are exercised on CI rather than only locally.
