@@ -1,0 +1,119 @@
+# MOTIS engine and GTFS feeds for the train-time pipeline.
+#
+# Run from `python/`. The engine, the feeds and the imported graph live in
+# `../.motis/`, which is gitignored; only the Parquet this produces is committed.
+#
+# There is no `osm.pbf`. MOTIS is imported GTFS-only, which means it cannot route
+# a walking transfer between two stops that the feed does not already connect.
+# Measured cost on the Aachen dataset: 6.8% of destinations up to 30 minutes
+# slower, never faster. That is accepted: the measurement is station to station,
+# so a walking leg inside a city is noise at the scale the map answers at.
+
+motis_version := "v2.11.3"
+motis_sha256 := "c776da60dfcdf20bb79f91eac81b8b81ba77fd0f69b7d67ff86d0365cc3bcc13"
+
+# MOTIS publishes no macOS x86_64 build, so the linux/amd64 binary runs in a
+# container. It only needs glibc, so the base image is enough.
+motis_asset := "motis-linux-amd64.tar.bz2"
+motis_url := "https://github.com/motis-project/motis/releases/download/" + motis_version + "/" + motis_asset
+image := "debian:bookworm-slim"
+
+motis_dir := "../.motis"
+feeds_dir := motis_dir / "feeds"
+
+# The German feeds keep the name the dataset takes, and a dataset id may not
+# contain `_`: `de_fv.zip` would import under the id `de_fv`, which MOTIS
+# rejects. Hence the hyphens.
+de_fv_feed := feeds_dir / "de-fv.zip"
+de_rv_feed := feeds_dir / "de-rv.zip"
+at_feed := feeds_dir / "at.zip"
+nl_feed := feeds_dir / "nl.zip"
+ch_feed := feeds_dir / "ch.zip"
+pl_feed := feeds_dir / "pl.zip"
+cz_feed := feeds_dir / "cz.zip"
+lu_feed := feeds_dir / "lu.zip"
+be_feed := feeds_dir / "be.zip"
+dk_feed := feeds_dir / "dk.zip"
+
+# 720 minutes (12 hours), because that is the widest the map's slider goes. The
+# same cap is `MAX_TRAVEL_MINUTES` in `src/trains/travel_time.py`, which is what
+# the client asks for as `maxTravelTime`. MOTIS refuses a request above
+# `limits.onetoall_max_travel_minutes`, which defaults to 90 minutes.
+max_travel_minutes := "720"
+
+# `-f` matters: without it curl saves an error page under the feed's name, and a
+# 429 from OpenOV during a full download list did exactly that once. The retries
+# cover a feed host rate-limiting a burst.
+curl_flags := "-fsSL --retry 3 --retry-delay 10"
+
+# Download the engine and check the binary that will actually run.
+motis-fetch:
+    mkdir -p {{motis_dir}}
+    curl -sSL -o {{motis_dir}}/{{motis_asset}} {{motis_url}}
+    tar -xf {{motis_dir}}/{{motis_asset}} -C {{motis_dir}}
+    rm {{motis_dir}}/{{motis_asset}}
+    echo "{{motis_sha256}}  {{motis_dir}}/motis" | shasum -a 256 -c -
+
+# Download the timetable feeds. See ../docs/feeds.md for sources, licences and
+# exclusions.
+motis-data:
+    mkdir -p {{feeds_dir}}
+    curl {{curl_flags}} -o {{de_fv_feed}} https://download.gtfs.de/germany/fv_free/latest.zip
+    curl {{curl_flags}} -o {{de_rv_feed}} https://download.gtfs.de/germany/rv_free/latest.zip
+    curl {{curl_flags}} -o {{nl_feed}} https://gtfs.ovapi.nl/nl/gtfs-nl.zip
+    curl {{curl_flags}} -o {{ch_feed}} https://data.opentransportdata.swiss/de/dataset/timetable-2026-gtfs2020/permalink
+    curl {{curl_flags}} -o {{pl_feed}} https://gtfs.kasznia.net/static/pkp-ic.zip
+    curl {{curl_flags}} -o {{cz_feed}} https://data.jr.ggu.cz/results/latest/CZPTT_GTFS.zip
+    curl {{curl_flags}} -o {{lu_feed}} https://data.public.lu/fr/datasets/r/b0cf7705-434d-44c7-b211-4fd760784988
+    # iRail mirrors the SNCB feed because the official channel is API-key gated:
+    # data.belgianmobility.io answers 403 without an Ocp-Apim-Subscription-Key.
+    curl {{curl_flags}} -o {{be_feed}} https://gtfs.irail.be/nmbs/gtfs/latest.zip
+    curl {{curl_flags}} -o {{dk_feed}} https://www.rejseplanen.info/labs/GTFS.zip
+    curl {{curl_flags}} -o {{at_feed}} https://static.web.oebb.at/open-data/soll-fahrplan-gtfs/GTFS_Fahrplan_2026.zip
+    # The ÖBB archive nests every file one directory deep; MOTIS reads a GTFS
+    # zip only when the .txt files are at the root and imports an unflattened
+    # feed as an empty dataset without reporting an error.
+    rm -rf {{feeds_dir}}/at-flat
+    unzip -q -o -j {{at_feed}} -d {{feeds_dir}}/at-flat
+    rm {{at_feed}}
+    (cd {{feeds_dir}}/at-flat && zip -q -j ../at.zip *)
+    rm -rf {{feeds_dir}}/at-flat
+
+# Generate the config and import it into a graph.
+#
+# The limits are appended rather than hand-written because MOTIS drops unknown
+# config keys silently, so a hand-written config that is subtly wrong fails
+# quietly. They must be appended *before* the import: `import` snapshots
+# config.yml into `data/config.yml`, and that snapshot is what `server` reads.
+motis-import: motis-fetch motis-data
+    cd {{motis_dir}} && docker run --rm -v "$PWD":/data -w /data {{image}} \
+        ./motis config feeds/de-fv.zip feeds/de-rv.zip feeds/at.zip feeds/nl.zip \
+                       feeds/ch.zip feeds/pl.zip feeds/cz.zip feeds/lu.zip \
+                       feeds/be.zip feeds/dk.zip
+    printf 'limits:\n  onetoall_max_travel_minutes: {{max_travel_minutes}}\n  onetoall_max_results: 250000\n  routing_max_timeout_seconds: 600\n' >> {{motis_dir}}/config.yml
+    cd {{motis_dir}} && docker run --rm -v "$PWD":/data -w /data {{image}} ./motis import
+
+# Serve the imported graph on :8080, detached, because the measurement talks to it.
+motis-server:
+    cd {{motis_dir}} && docker run -d --name motis -p 8080:8080 -v "$PWD":/data -w /data {{image}} ./motis server
+    until curl -sf http://localhost:8080/api/v1/health >/dev/null; do sleep 1; done
+    @echo "MOTIS is up on http://localhost:8080"
+
+motis-server-stop:
+    docker rm -f motis
+
+# The city list the map draws, and which stops serve which city. Requires
+# `just motis-server`: the stations come from the engine's stop catalogue.
+city:
+    uv run python -m trains.city
+
+# Minutes from each origin to each city. Requires `just motis-server`.
+travel-time: city
+    uv run python -m trains.travel_time
+
+# Everything that produces committed data.
+data: travel-time
+
+# The engine and feeds are large and reproducible; this is the cheap way back.
+clean-motis:
+    rm -rf {{motis_dir}}/data {{motis_dir}}/config.yml

@@ -95,7 +95,7 @@ Code that runs proves nothing about what a screen looks like. An API response, a
 
 ## Documentation hygiene
 
-Reference docs (for example `python/FEEDS.md`) describe the **current
+Reference docs (for example `docs/feeds.md`) describe the **current
 state**: what a thing is, its inputs and outputs, and how to operate it. They are
 not a record of how we got there.
 

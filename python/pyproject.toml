@@ -5,6 +5,7 @@ description = "The batch pipeline behind 49travel."
 requires-python = ">=3.14"
 dependencies = [
     "click>=8.1.7",
+    "pyarrow>=25.0.1",
 ]
 
 [dependency-groups]
@@ -18,10 +19,10 @@ dev = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-# Installing the project makes `travel49` importable from anywhere, so nothing
-# needs PYTHONPATH.
+# Installing the project makes `travel49` and `trains` importable from anywhere,
+# so nothing needs PYTHONPATH.
 [tool.hatch.build.targets.wheel]
-packages = ["src/travel49"]
+packages = ["src/travel49", "src/trains"]
 
 [tool.ruff]
 line-length = 88

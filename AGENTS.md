@@ -8,6 +8,7 @@
 - `python/data/travel49/cities.sqlite` — source-of-truth DB (~610 cities, ~460 resolved stops). Committed. **Never delete `.sqlite` files.**
 - `python/data/travel49/*.json` — generated €49 JSON, copied to `src/data/`.
 - `python/archive/` — dead code: the old `v6.db.transport.rest` scraper, the WikiVoyage/LLM scraper and the pyhafas journey search. Kept for history only. It is excluded from ruff and ty, and it no longer imports cleanly, because the models it depended on are gone. Do not build on it.
+- `docs/` — reference docs describing the current state: `feeds.md` (GTFS feed selection, URLs, licences) and `data_notes.md` (what the map dataset is and what its numbers mean).
 
 ## Commands
 Frontend, from repo root: `npm start` (port 3000), `npm run build`, `npm test`.
