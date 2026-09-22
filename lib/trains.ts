@@ -4,11 +4,17 @@
 // are defined once rather than repeated per caller.
 
 import path from "node:path";
+import {
+  NO_METRIC_FILTERS,
+  activeMetricBound,
+  type MetricFilters,
+} from "@/lib/city-metric-filters";
 import { trainsConnection, trainsDataDir } from "@/lib/duckdb";
 
 const travelTimeParquet = path.join(trainsDataDir, "travel_time.parquet");
 const cityParquet = path.join(trainsDataDir, "city.parquet");
 const cityLinkParquet = path.join(trainsDataDir, "city_link.parquet");
+const cityMetricParquet = path.join(trainsDataDir, "city_metric.parquet");
 
 /** A city inside the requested travel-time band, as returned by `GET /api/reachable`. */
 export type Destination = {
@@ -134,19 +140,60 @@ export async function originCity(cityId: string): Promise<Origin | null> {
 
 /**
  * Destinations reachable from `originCityId` in at least `minMinutes` and at
- * most `maxMinutes`, both bounds inclusive. The origin is not one of them: a
- * destination is somewhere you travel to, and `travel_time` gives the origin its
- * own row at 0 minutes only so that it can be drawn.
+ * most `maxMinutes`, both bounds inclusive, narrowed by whichever of `filters`
+ * are set. The origin is not one of them: a destination is somewhere you travel
+ * to, and `travel_time` gives the origin its own row at 0 minutes only so that it
+ * can be drawn.
  *
  * Reachability is not stored, so it is this comparison — not a precomputed flag —
  * that the band drives. An origin the pipeline never measured has no rows at all
  * and therefore yields nothing.
+ *
+ * The metrics join is a LEFT JOIN and a filter with no bound contributes no
+ * clause, so a city the metrics build has no row for stays on the map until a
+ * filter asks something of it. Once asked, the comparison is against NULL, which
+ * is not true, so that city drops out — which is the right answer: nothing is
+ * known about it.
  */
 export async function destinationsBetween(
   originCityId: string,
   minMinutes: number,
   maxMinutes: number,
+  filters: MetricFilters = NO_METRIC_FILTERS,
 ): Promise<Destination[]> {
+  const conditions = [
+    "t.origin_city_id = ?",
+    "t.city_id <> t.origin_city_id",
+    "t.minutes >= ?",
+    "t.minutes <= ?",
+  ];
+  const values: (string | number)[] = [originCityId, minMinutes, maxMinutes];
+
+  const sitelinks = activeMetricBound(filters, "minWikipediaSitelinks");
+  if (sitelinks !== null) {
+    conditions.push("m.wikipedia_sitelinks >= ?");
+    values.push(sitelinks);
+  }
+  const wikivoyage = activeMetricBound(filters, "minWikivoyageArticles");
+  if (wikivoyage !== null) {
+    conditions.push("m.wikivoyage_article IS TRUE");
+  }
+  const unesco = activeMetricBound(filters, "minUnescoSites");
+  if (unesco !== null) {
+    conditions.push("m.unesco_sites >= ?");
+    values.push(unesco);
+  }
+  const tourism = activeMetricBound(filters, "minTourismPois");
+  if (tourism !== null) {
+    conditions.push("m.tourism_pois >= ?");
+    values.push(tourism);
+  }
+  const stationCategory = activeMetricBound(filters, "maxDbStationCategory");
+  if (stationCategory !== null) {
+    conditions.push("m.db_station_category <= ?");
+    values.push(stationCategory);
+  }
+
   const connection = await trainsConnection();
   const reader = await connection.runAndReadAll(
     `SELECT t.city_id AS city_id, c.name AS name, c.latitude AS latitude,
@@ -155,16 +202,15 @@ export async function destinationsBetween(
      FROM read_parquet(?) AS t
      JOIN read_parquet(?) AS c ON c.city_id = t.city_id
      LEFT JOIN read_parquet(?) AS l ON l.city_id = t.city_id
-     WHERE t.origin_city_id = ? AND t.city_id <> t.origin_city_id
-       AND t.minutes >= ? AND t.minutes <= ?
+     LEFT JOIN read_parquet(?) AS m ON m.city_id = t.city_id
+     WHERE ${conditions.join(" AND ")}
      ORDER BY t.minutes, c.name`,
     [
       travelTimeParquet,
       cityParquet,
       cityLinkParquet,
-      originCityId,
-      minMinutes,
-      maxMinutes,
+      cityMetricParquet,
+      ...values,
     ],
   );
   return reader.getRowObjectsJS().map((row) => ({

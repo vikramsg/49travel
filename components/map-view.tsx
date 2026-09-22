@@ -16,6 +16,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import {
+  METRIC_FILTER_SPECS,
+  NO_METRIC_FILTERS,
+  activeMetricBound,
+  metricFilterParams,
+  metricFilterSpec,
+  parseMetricFilters,
+  type MetricFilterName,
+  type MetricFilterProblem,
+  type MetricFilters,
+} from "@/lib/city-metric-filters";
+import {
   MAX_BAND_HOURS,
   MIN_BAND_HOURS,
   parseHoursBand,
@@ -32,6 +43,15 @@ const ReachMap = dynamic(
 // The legend and the markers read the same constants, so they cannot disagree.
 const ORIGIN_COLOR = "#0d6efd";
 const CITY_COLOR = "#dc3545";
+
+/** Every bound starts blank, and a blank bound asks nothing of its metric. */
+const EMPTY_FILTER_TEXT: Record<MetricFilterName, string> = {
+  minWikipediaSitelinks: "",
+  minWikivoyageArticles: "",
+  minUnescoSites: "",
+  minTourismPois: "",
+  maxDbStationCategory: "",
+};
 
 type OriginOption = {
   value: string;
@@ -72,12 +92,22 @@ export function MapView({
   const [minText, setMinText] = useState(String(defaultMinHours));
   const [maxText, setMaxText] = useState(String(defaultMaxHours));
   const [bandError, setBandError] = useState<string | null>(null);
+  // The filter form's text is held apart from the applied filters for the same
+  // reason the band's text is: a half-typed bound should not redraw the map.
+  const [filterText, setFilterText] =
+    useState<Record<MetricFilterName, string>>(EMPTY_FILTER_TEXT);
+  const [filters, setFilters] = useState<MetricFilters>(NO_METRIC_FILTERS);
+  const [filterProblem, setFilterProblem] = useState<MetricFilterProblem | null>(
+    null,
+  );
   const [attempt, setAttempt] = useState(0);
   const [response, setResponse] = useState<ReachableResponse | null>(null);
   const [outcome, setOutcome] = useState<RequestOutcome | null>(null);
 
   const { minHours, maxHours } = band;
-  const queryKey = `${originCityId}|${minHours}|${maxHours}|${attempt}`;
+  const queryKey = `${originCityId}|${minHours}|${maxHours}|${JSON.stringify(
+    metricFilterParams(filters),
+  )}|${attempt}`;
 
   const originOptions = useMemo<OriginOption[]>(
     () => origins.map((origin) => ({ value: origin.cityId, label: origin.name })),
@@ -93,6 +123,7 @@ export function MapView({
       origin: originCityId,
       minHours: String(minHours),
       maxHours: String(maxHours),
+      ...metricFilterParams(filters),
     });
 
     fetch(`/api/reachable?${query}`, { signal: controller.signal })
@@ -120,13 +151,16 @@ export function MapView({
       });
 
     return () => controller.abort();
-  }, [originCityId, minHours, maxHours, queryKey]);
+  }, [originCityId, minHours, maxHours, filters, queryKey]);
 
   const loading = outcome?.key !== queryKey;
   const error = !loading && outcome?.status === "error" ? outcome.message : null;
 
   const destinations = response?.destinations ?? [];
   const destinationCount = destinations.length;
+  const filterCount = METRIC_FILTER_SPECS.filter(
+    (spec) => activeMetricBound(filters, spec.name) !== null,
+  ).length;
 
   /** The one place the applied band changes: the slider and the form both go through it. */
   function applyBand(next: HoursBand) {
@@ -144,6 +178,27 @@ export function MapView({
       return;
     }
     applyBand(parsed.band);
+  }
+
+  /** The one place the applied filters change: the form's Apply goes through it. */
+  function applyFilters(next: MetricFilters) {
+    setFilters(next);
+    setFilterProblem(null);
+  }
+
+  function applyTypedFilters(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const parsed = parseMetricFilters((name) => filterText[name]);
+    if ("problem" in parsed) {
+      setFilterProblem(parsed.problem);
+      return;
+    }
+    applyFilters(parsed.filters);
+  }
+
+  function clearFilters() {
+    setFilterText(EMPTY_FILTER_TEXT);
+    applyFilters(NO_METRIC_FILTERS);
   }
 
   return (
@@ -263,6 +318,61 @@ export function MapView({
         </div>
       </div>
 
+      {/* Each metric is its own filter. They narrow together but are never
+          combined into a score, so a destination that drops out can be explained
+          by naming the one bound it failed. */}
+      <form
+        className="flex flex-col gap-3 rounded-xl border p-4"
+        onSubmit={applyTypedFilters}
+      >
+        <div>
+          <span className="text-sm font-medium">Destination filters</span>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Each one narrows the map on its own. A blank bound asks nothing of
+            that metric.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {METRIC_FILTER_SPECS.map((spec) => (
+            <div key={spec.name} className="flex flex-col gap-1">
+              <Label htmlFor={`filter-${spec.name}`} className="text-xs">
+                {spec.label}
+              </Label>
+              <Input
+                id={`filter-${spec.name}`}
+                className="h-8"
+                inputMode="numeric"
+                placeholder="Any"
+                value={filterText[spec.name]}
+                aria-invalid={filterProblem?.name === spec.name}
+                aria-describedby={
+                  filterProblem?.name === spec.name ? "filter-error" : undefined
+                }
+                onChange={(event) =>
+                  setFilterText({
+                    ...filterText,
+                    [spec.name]: event.target.value,
+                  })
+                }
+              />
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="submit" size="sm" variant="outline">
+            Apply filters
+          </Button>
+          <Button type="button" size="sm" variant="ghost" onClick={clearFilters}>
+            Clear
+          </Button>
+        </div>
+        {filterProblem && (
+          <p id="filter-error" role="alert" className="text-xs text-destructive">
+            {filterProblemText(filterProblem)}
+          </p>
+        )}
+      </form>
+
       {/* A fixed height keeps the map's top edge in the same place whether the
           line holds one short line or the long mobile empty message, so no
           result changes shift the map. `h-28` fits the longest of those at
@@ -295,15 +405,25 @@ export function MapView({
         )}
         {!loading && !error && response && (
           <span className="text-muted-foreground">
-            {destinationCount === 0
-              ? `No destination is between ${minHours} h and ${maxHours} h of ${originName}. Widen the range or choose another origin.`
-              : `${destinationCount} ${
-                  destinationCount === 1 ? "destination" : "destinations"
-                } between ${minHours} h and ${maxHours} h of ${originName}.`}{" "}
+            {destinationSummary(
+              destinationCount,
+              minHours,
+              maxHours,
+              originName,
+              filterCount,
+            )}{" "}
             Estimates measured on {response.measuredOn}.
           </span>
         )}
       </div>
+
+      {/* The applied filters are stated with the map, not only inside the form,
+          so what the map is showing can be read without scrolling back to it. */}
+      {filterCount > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Showing destinations with {appliedFilterLabels(filters).join("; ")}.
+        </p>
+      )}
 
       {response === null ? (
         <MapPlaceholder>
@@ -337,6 +457,62 @@ export function MapView({
 }
 
 /**
+ * The active filters, worded the way the form labels them. The station category
+ * is the one that reads downwards — a lower number is the larger station — so it
+ * is the one bound that is not phrased as a minimum.
+ */
+function appliedFilterLabels(filters: MetricFilters): string[] {
+  return METRIC_FILTER_SPECS.flatMap((spec) => {
+    const bound = activeMetricBound(filters, spec.name);
+    if (bound === null) return [];
+    return spec.name === "maxDbStationCategory"
+      ? `${spec.label} ${bound}`
+      : `${spec.label} at least ${bound}`;
+  });
+}
+
+/**
+ * What the status line says about the last result. When nothing came back the
+ * filters are named as the cause, because "widen the range" is the wrong advice
+ * if a filter is what emptied the map.
+ */
+function destinationSummary(
+  count: number,
+  minHours: number,
+  maxHours: number,
+  originName: string,
+  filterCount: number,
+): string {
+  const range = `between ${minHours} h and ${maxHours} h of ${originName}`;
+  if (count === 0) {
+    return filterCount > 0
+      ? `No destination is ${range} with these filters. Loosen a filter or widen the range.`
+      : `No destination is ${range}. Widen the range or choose another origin.`;
+  }
+  const destinations = `${count} ${count === 1 ? "destination" : "destinations"}`;
+  const narrowed =
+    filterCount > 0
+      ? `, narrowed by ${filterCount} ${
+          filterCount === 1 ? "filter" : "filters"
+        }`
+      : "";
+  return `${destinations} ${range}${narrowed}.`;
+}
+
+/**
+ * The form's wording for a rejected metric bound. The same problems are worded
+ * for the API in `app/api/[[...route]]/route.ts`, which names the query
+ * parameter instead.
+ */
+function filterProblemText(problem: MetricFilterProblem): string {
+  const { label, min, max } = metricFilterSpec(problem.name);
+  if (problem.kind === "not-whole-number") {
+    return `${label} must be a whole number.`;
+  }
+  return `${label} must be between ${min} and ${max}.`;
+}
+
+/**
  * The form's wording for a rejected range. The same problems are worded for the
  * API in `app/api/[[...route]]/route.ts`, which names query parameters instead.
  */
@@ -355,7 +531,8 @@ function bandProblemText(
   }
 }
 
-function LegendDot({ color, size }: { color: string; size: number }) {  return (
+function LegendDot({ color, size }: { color: string; size: number }) {
+  return (
     <span
       aria-hidden
       className="rounded-full border-2 border-white"
