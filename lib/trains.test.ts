@@ -92,3 +92,29 @@ describe("destinationsBetween", () => {
     expect(await destinationsBetween("1", 0, CAP_MINUTES)).toEqual([]);
   });
 });
+
+describe("destination links", () => {
+  it("resolves articles for most destinations and leaves the rest empty", async () => {
+    const destinations = await destinationsBetween(HAMBURG, 0, CAP_MINUTES);
+    const linked = destinations.filter(
+      (destination) => destination.wikipediaUrl !== null,
+    );
+
+    expect(linked.length * 2).toBeGreaterThan(destinations.length);
+  });
+
+  it("never invents a URL: a link is either absent or on the expected wiki", async () => {
+    const destinations = await destinationsBetween(HAMBURG, 0, CAP_MINUTES);
+
+    for (const { wikipediaUrl, wikivoyageUrl } of destinations) {
+      expect(
+        wikipediaUrl === null ||
+          wikipediaUrl.startsWith("https://en.wikipedia.org/wiki/"),
+      ).toBe(true);
+      expect(
+        wikivoyageUrl === null ||
+          wikivoyageUrl.startsWith("https://en.wikivoyage.org/wiki/"),
+      ).toBe(true);
+    }
+  });
+});

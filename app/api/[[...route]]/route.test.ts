@@ -18,7 +18,12 @@ type ReachableBody = {
     latitude: number;
     longitude: number;
   };
-  destinations?: { cityId: string; minutes: number }[];
+  destinations?: {
+    cityId: string;
+    minutes: number;
+    wikipediaUrl: string | null;
+    wikivoyageUrl: string | null;
+  }[];
 };
 
 async function reachable(query: string): Promise<Response> {
@@ -41,6 +46,9 @@ describe("GET /api/reachable", () => {
     expect(body.measuredOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(body.destinations!.length).toBeGreaterThan(0);
     expect(body.destinations!.every((city) => city.minutes <= 6 * 60)).toBe(
+      true,
+    );
+    expect(body.destinations!.some((city) => city.wikipediaUrl !== null)).toBe(
       true,
     );
   });
