@@ -170,16 +170,18 @@ export function MapView({
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div>
+    <div className="flex flex-col gap-3">
+      {/* One line at laptop widths, so the map below it is not pushed off the
+          bottom of the window by a heading that wraps. */}
+      <div className="flex flex-col gap-1 lg:flex-row lg:items-baseline lg:gap-3">
         <h1 className="text-2xl font-bold">Destinations</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Pick an origin and a travel-time range to see the destinations a train
           reaches between them.
         </p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]">
+      <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
         <aside className="flex flex-col gap-4">
           {/* Origin and travel time are the map's own controls and stay visible.
               Only the five metrics fold away behind a button. */}
@@ -293,7 +295,7 @@ export function MapView({
         <MetricFilterPanel filters={filters} onApply={applyFilters} />
       </aside>
 
-      <div className="flex min-w-0 flex-col gap-4">
+      <div className="flex min-w-0 flex-col gap-3">
 
       {/* A fixed height keeps the map's top edge in the same place whether the
           line holds one short line or the long mobile empty message, so no
@@ -354,7 +356,7 @@ export function MapView({
             : "No destinations to draw — the request failed."}
         </MapPlaceholder>
       ) : (
-        <div className="isolate h-[60vh] min-h-[360px] w-full overflow-hidden rounded-xl border">
+        <div className="isolate h-[60vh] min-h-[360px] w-full overflow-hidden rounded-xl border lg:h-[calc(100dvh-18rem)] lg:min-h-[420px]">
           <ReachMap
             destinations={destinations}
             origin={response.origin}
@@ -459,7 +461,7 @@ function LegendDot({ color, size }: { color: string; size: number }) {
 
 function MapPlaceholder({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-[60vh] min-h-[360px] w-full items-center justify-center rounded-xl border bg-muted/40 text-sm text-muted-foreground">
+    <div className="flex h-[60vh] min-h-[360px] w-full items-center justify-center rounded-xl border bg-muted/40 text-sm text-muted-foreground lg:h-[calc(100dvh-18rem)] lg:min-h-[420px]">
       {children}
     </div>
   );

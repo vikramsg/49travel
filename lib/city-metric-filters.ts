@@ -81,41 +81,34 @@ export const DEFAULT_METRIC_FILTERS: MetricFilters = {
   minTourismPois: 50,
 };
 
-/** Every filter at its off value, as the form's text inputs start out. */
-export const EMPTY_METRIC_FILTER_TEXT: Record<MetricFilterName, string> = {
-  minWikipediaSitelinks: "",
-  minWikivoyageArticles: "",
-  minUnescoSites: "",
-  minTourismPois: "",
-  maxDbStationCategory: "",
-};
-
 /**
- * The text a form starts on for a given set of filters, so a default that is not
- * "off" still shows what it is when the form is opened.
+ * The filters with one metric set to a bound. Written as one branch per metric
+ * rather than an indexed assignment, because the station category is the one
+ * whose bound is nullable and a computed key over the union would not type.
  */
-export function metricFilterText(filters: MetricFilters): Record<
-  MetricFilterName,
-  string
-> {
-  return {
-    minWikipediaSitelinks:
-      filters.minWikipediaSitelinks === 0
-        ? ""
-        : String(filters.minWikipediaSitelinks),
-    minWikivoyageArticles:
-      filters.minWikivoyageArticles === 0
-        ? ""
-        : String(filters.minWikivoyageArticles),
-    minUnescoSites:
-      filters.minUnescoSites === 0 ? "" : String(filters.minUnescoSites),
-    minTourismPois:
-      filters.minTourismPois === 0 ? "" : String(filters.minTourismPois),
-    maxDbStationCategory:
-      filters.maxDbStationCategory === null
-        ? ""
-        : String(filters.maxDbStationCategory),
-  };
+export function withMetricBound(
+  filters: MetricFilters,
+  name: MetricFilterName,
+  bound: number,
+): MetricFilters {
+  switch (name) {
+    case "minWikipediaSitelinks":
+      return { ...filters, minWikipediaSitelinks: bound };
+    case "minWikivoyageArticles":
+      return { ...filters, minWikivoyageArticles: bound };
+    case "minUnescoSites":
+      return { ...filters, minUnescoSites: bound };
+    case "minTourismPois":
+      return { ...filters, minTourismPois: bound };
+    case "maxDbStationCategory":
+      // The map's slider has one off position, at zero, and a category of zero
+      // does not exist. So zero becomes null here rather than being sent, and
+      // the API's own range for this parameter stays 1 to 7.
+      return {
+        ...filters,
+        maxDbStationCategory: bound === 0 ? null : bound,
+      };
+  }
 }
 
 /** One metric's filter: its label for a person, and the values it accepts. */
@@ -125,6 +118,12 @@ export type MetricFilterSpec = {
   label: string;
   min: number;
   max: number;
+  /**
+   * How far the map's slider moves at a time. The scales are wide and the
+   * interesting part of most of them is near zero, so a step of one would make
+   * the low end unreachable by drag.
+   */
+  step: number;
 };
 
 export const METRIC_FILTER_SPECS: readonly MetricFilterSpec[] = [
@@ -133,30 +132,35 @@ export const METRIC_FILTER_SPECS: readonly MetricFilterSpec[] = [
     label: "Wikipedia languages",
     min: 0,
     max: MAX_SITELINK_FILTER,
+    step: 5,
   },
   {
     name: "minWikivoyageArticles",
     label: "Wikivoyage articles",
     min: 0,
     max: 1,
+    step: 1,
   },
   {
     name: "minUnescoSites",
     label: "World Heritage Sites nearby",
     min: 0,
     max: MAX_UNESCO_FILTER,
+    step: 1,
   },
   {
     name: "minTourismPois",
     label: "Mapped sights nearby",
     min: 0,
     max: MAX_POI_FILTER,
+    step: 5,
   },
   {
     name: "maxDbStationCategory",
     label: "Station category at most",
     min: MIN_STATION_CATEGORY,
     max: MAX_STATION_CATEGORY,
+    step: 1,
   },
 ];
 

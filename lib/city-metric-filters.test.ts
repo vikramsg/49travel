@@ -5,6 +5,7 @@ import {
   activeMetricBound,
   metricFilterParams,
   parseMetricFilters,
+  withMetricBound,
 } from "@/lib/city-metric-filters";
 
 /** The parser as the route calls it: the query string, looked up by name. */
@@ -69,6 +70,25 @@ describe("activeMetricBound", () => {
         "minTourismPois",
       ),
     ).toBe(5);
+  });
+});
+
+describe("withMetricBound", () => {
+  it("sets one metric and leaves the others where they were", () => {
+    const next = withMetricBound(NO_METRIC_FILTERS, "minTourismPois", 50);
+
+    expect(next.minTourismPois).toBe(50);
+    expect(next.minWikipediaSitelinks).toBe(0);
+    expect(next.maxDbStationCategory).toBeNull();
+  });
+
+  it("reads a zero station category as no bound, because category zero does not exist", () => {
+    const set = withMetricBound(NO_METRIC_FILTERS, "maxDbStationCategory", 4);
+    expect(set.maxDbStationCategory).toBe(4);
+
+    const cleared = withMetricBound(set, "maxDbStationCategory", 0);
+    expect(cleared.maxDbStationCategory).toBeNull();
+    expect(activeMetricBound(cleared, "maxDbStationCategory")).toBeNull();
   });
 });
 
