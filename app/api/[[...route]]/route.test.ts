@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import { GET } from "@/app/api/[[...route]]/route";
+import { MAX_SITELINK_FILTER } from "@/lib/city-metric-filters";
 
 const HAMBURG = "2911298";
 // In `city.parquet` as a destination, but never measured as an origin.
@@ -83,6 +84,31 @@ describe("GET /api/reachable", () => {
     expect(body.origin).toMatchObject({ cityId: HAMBURG });
   });
 
+  it("narrows the destinations by a metric filter", async () => {
+    const band = await readBody(
+      await reachable(`origin=${HAMBURG}&minHours=0&maxHours=6`),
+    );
+    const narrowed = await readBody(
+      await reachable(
+        `origin=${HAMBURG}&minHours=0&maxHours=6&minWikipediaSitelinks=100`,
+      ),
+    );
+
+    expect(narrowed.destinations!.length).toBeGreaterThan(0);
+    expect(narrowed.destinations!.length).toBeLessThan(
+      band.destinations!.length,
+    );
+  });
+
+  it("accepts a filter no destination satisfies as an empty answer", async () => {
+    const response = await reachable(
+      `origin=${HAMBURG}&minHours=0&maxHours=6&minWikipediaSitelinks=${MAX_SITELINK_FILTER}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect((await readBody(response)).destinations).toEqual([]);
+  });
+
   const rejected: [string, string][] = [
     ["no origin", `minHours=0&maxHours=6`],
     ["an origin the pipeline never measured", `origin=1&minHours=0&maxHours=6`],
@@ -99,6 +125,18 @@ describe("GET /api/reachable", () => {
     ["a bound past the 12 hour cap", `origin=${HAMBURG}&minHours=0&maxHours=13`],
     ["an inverted band", `origin=${HAMBURG}&minHours=7&maxHours=6`],
     ["the single bound this replaced", `origin=${HAMBURG}&hours=6`],
+    [
+      "a metric bound that is not a number",
+      `origin=${HAMBURG}&minHours=0&maxHours=6&minTourismPois=many`,
+    ],
+    [
+      "a station category past the seventh",
+      `origin=${HAMBURG}&minHours=0&maxHours=6&maxDbStationCategory=8`,
+    ],
+    [
+      "a negative metric bound",
+      `origin=${HAMBURG}&minHours=0&maxHours=6&minUnescoSites=-1`,
+    ],
   ];
 
   it.each(rejected)("rejects %s with a 400", async (_case, query) => {

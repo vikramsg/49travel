@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { LoaderCircle } from "lucide-react";
+import { MetricFilterPanel } from "@/components/metric-filter-panel";
 import { Button } from "@/components/ui/button";
 import {
   Combobox,
@@ -15,6 +16,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import {
+  DEFAULT_METRIC_FILTERS,
+  METRIC_FILTER_SPECS,
+  activeMetricBound,
+  metricFilterParams,
+  type MetricFilters,
+} from "@/lib/city-metric-filters";
 import {
   MAX_BAND_HOURS,
   MIN_BAND_HOURS,
@@ -72,12 +80,18 @@ export function MapView({
   const [minText, setMinText] = useState(String(defaultMinHours));
   const [maxText, setMaxText] = useState(String(defaultMaxHours));
   const [bandError, setBandError] = useState<string | null>(null);
+  // The map opens on the popular subset rather than on every stop the range
+  // reaches. `MetricFilterPanel` owns the form's draft text; what is applied
+  // lives here, because the request and the map both read it.
+  const [filters, setFilters] = useState<MetricFilters>(DEFAULT_METRIC_FILTERS);
   const [attempt, setAttempt] = useState(0);
   const [response, setResponse] = useState<ReachableResponse | null>(null);
   const [outcome, setOutcome] = useState<RequestOutcome | null>(null);
 
   const { minHours, maxHours } = band;
-  const queryKey = `${originCityId}|${minHours}|${maxHours}|${attempt}`;
+  const queryKey = `${originCityId}|${minHours}|${maxHours}|${JSON.stringify(
+    metricFilterParams(filters),
+  )}|${attempt}`;
 
   const originOptions = useMemo<OriginOption[]>(
     () => origins.map((origin) => ({ value: origin.cityId, label: origin.name })),
@@ -93,6 +107,7 @@ export function MapView({
       origin: originCityId,
       minHours: String(minHours),
       maxHours: String(maxHours),
+      ...metricFilterParams(filters),
     });
 
     fetch(`/api/reachable?${query}`, { signal: controller.signal })
@@ -120,13 +135,16 @@ export function MapView({
       });
 
     return () => controller.abort();
-  }, [originCityId, minHours, maxHours, queryKey]);
+  }, [originCityId, minHours, maxHours, filters, queryKey]);
 
   const loading = outcome?.key !== queryKey;
   const error = !loading && outcome?.status === "error" ? outcome.message : null;
 
   const destinations = response?.destinations ?? [];
   const destinationCount = destinations.length;
+  const filterCount = METRIC_FILTER_SPECS.filter(
+    (spec) => activeMetricBound(filters, spec.name) !== null,
+  ).length;
 
   /** The one place the applied band changes: the slider and the form both go through it. */
   function applyBand(next: HoursBand) {
@@ -146,17 +164,28 @@ export function MapView({
     applyBand(parsed.band);
   }
 
+  /** The one place the applied filters change: the panel's Apply goes through it. */
+  function applyFilters(next: MetricFilters) {
+    setFilters(next);
+  }
+
   return (
-    <div className="flex flex-col gap-4">
-      <div>
+    <div className="flex flex-col gap-3">
+      {/* One line at laptop widths, so the map below it is not pushed off the
+          bottom of the window by a heading that wraps. */}
+      <div className="flex flex-col gap-1 lg:flex-row lg:items-baseline lg:gap-3">
         <h1 className="text-2xl font-bold">Destinations</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Pick an origin and a travel-time range to see the destinations a train
           reaches between them.
         </p>
       </div>
 
-      <div className="grid gap-6 rounded-xl border p-4 md:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
+        <aside className="flex flex-col gap-4">
+          {/* Origin and travel time are the map's own controls and stay visible.
+              Only the five metrics fold away behind a button. */}
+          <div className="flex flex-col gap-4 rounded-xl border p-4">
         <div className="flex flex-col gap-2">
           <Label htmlFor="origin-selector">Origin city</Label>
           <Combobox
@@ -260,8 +289,13 @@ export function MapView({
               {bandError}
             </p>
           )}
+          </div>
         </div>
-      </div>
+
+        <MetricFilterPanel filters={filters} onApply={applyFilters} />
+      </aside>
+
+      <div className="flex min-w-0 flex-col gap-3">
 
       {/* A fixed height keeps the map's top edge in the same place whether the
           line holds one short line or the long mobile empty message, so no
@@ -295,15 +329,25 @@ export function MapView({
         )}
         {!loading && !error && response && (
           <span className="text-muted-foreground">
-            {destinationCount === 0
-              ? `No destination is between ${minHours} h and ${maxHours} h of ${originName}. Widen the range or choose another origin.`
-              : `${destinationCount} ${
-                  destinationCount === 1 ? "destination" : "destinations"
-                } between ${minHours} h and ${maxHours} h of ${originName}.`}{" "}
+            {destinationSummary(
+              destinationCount,
+              minHours,
+              maxHours,
+              originName,
+              filterCount,
+            )}{" "}
             Estimates measured on {response.measuredOn}.
           </span>
         )}
       </div>
+
+      {/* The applied filters are stated with the map, not only inside the form,
+          so what the map is showing can be read without scrolling back to it. */}
+      {filterCount > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Showing destinations with {appliedFilterLabels(filters).join("; ")}.
+        </p>
+      )}
 
       {response === null ? (
         <MapPlaceholder>
@@ -312,7 +356,7 @@ export function MapView({
             : "No destinations to draw — the request failed."}
         </MapPlaceholder>
       ) : (
-        <div className="isolate h-[60vh] min-h-[360px] w-full overflow-hidden rounded-xl border">
+        <div className="isolate h-[60vh] min-h-[360px] w-full overflow-hidden rounded-xl border lg:h-[calc(100dvh-18rem)] lg:min-h-[420px]">
           <ReachMap
             destinations={destinations}
             origin={response.origin}
@@ -332,8 +376,53 @@ export function MapView({
           Destination
         </li>
       </ul>
+      </div>
+      </div>
     </div>
   );
+}
+
+/**
+ * The active filters, worded the way the form labels them. The station category
+ * is the one that reads downwards — a lower number is the larger station — so it
+ * is the one bound that is not phrased as a minimum.
+ */
+function appliedFilterLabels(filters: MetricFilters): string[] {
+  return METRIC_FILTER_SPECS.flatMap((spec) => {
+    const bound = activeMetricBound(filters, spec.name);
+    if (bound === null) return [];
+    return spec.name === "maxDbStationCategory"
+      ? `${spec.label} ${bound}`
+      : `${spec.label} at least ${bound}`;
+  });
+}
+
+/**
+ * What the status line says about the last result. When nothing came back the
+ * filters are named as the cause, because "widen the range" is the wrong advice
+ * if a filter is what emptied the map.
+ */
+function destinationSummary(
+  count: number,
+  minHours: number,
+  maxHours: number,
+  originName: string,
+  filterCount: number,
+): string {
+  const range = `between ${minHours} h and ${maxHours} h of ${originName}`;
+  if (count === 0) {
+    return filterCount > 0
+      ? `No destination is ${range} with these filters. Loosen a filter or widen the range.`
+      : `No destination is ${range}. Widen the range or choose another origin.`;
+  }
+  const destinations = `${count} ${count === 1 ? "destination" : "destinations"}`;
+  const narrowed =
+    filterCount > 0
+      ? `, narrowed by ${filterCount} ${
+          filterCount === 1 ? "filter" : "filters"
+        }`
+      : "";
+  return `${destinations} ${range}${narrowed}.`;
 }
 
 /**
@@ -355,7 +444,8 @@ function bandProblemText(
   }
 }
 
-function LegendDot({ color, size }: { color: string; size: number }) {  return (
+function LegendDot({ color, size }: { color: string; size: number }) {
+  return (
     <span
       aria-hidden
       className="rounded-full border-2 border-white"
@@ -371,7 +461,7 @@ function LegendDot({ color, size }: { color: string; size: number }) {  return (
 
 function MapPlaceholder({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-[60vh] min-h-[360px] w-full items-center justify-center rounded-xl border bg-muted/40 text-sm text-muted-foreground">
+    <div className="flex h-[60vh] min-h-[360px] w-full items-center justify-center rounded-xl border bg-muted/40 text-sm text-muted-foreground lg:h-[calc(100dvh-18rem)] lg:min-h-[420px]">
       {children}
     </div>
   );

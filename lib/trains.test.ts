@@ -3,6 +3,11 @@
 // back for a band), not how the SQL is written.
 
 import { describe, expect, it } from "vitest";
+import {
+  DEFAULT_METRIC_FILTERS,
+  MAX_SITELINK_FILTER,
+  NO_METRIC_FILTERS,
+} from "@/lib/city-metric-filters";
 import { destinationsBetween, originCity, supportedOrigins } from "@/lib/trains";
 
 // The pipeline's sanity example and the map's default origin.
@@ -116,5 +121,74 @@ describe("destination links", () => {
           wikivoyageUrl.startsWith("https://en.wikivoyage.org/wiki/"),
       ).toBe(true);
     }
+  });
+});
+
+describe("metric filters", () => {
+  it("opens the map on a popular subset rather than every stop the range reaches", async () => {
+    const everything = await destinationsBetween(HAMBURG, 0, CAP_MINUTES);
+    const popular = await destinationsBetween(
+      HAMBURG,
+      0,
+      CAP_MINUTES,
+      DEFAULT_METRIC_FILTERS,
+    );
+
+    expect(popular.length).toBeGreaterThan(0);
+    // Measured at about a tenth of the range, so between a twentieth and a fifth
+    // is a band that fails if the default stops narrowing or over-narrows.
+    expect(popular.length).toBeGreaterThan(everything.length / 20);
+    expect(popular.length).toBeLessThan(everything.length / 5);
+  });
+
+  it("narrows the band by a metric without changing the band itself", async () => {
+    const band = await destinationsBetween(HAMBURG, 0, CAP_MINUTES);
+    const famous = await destinationsBetween(HAMBURG, 0, CAP_MINUTES, {
+      ...NO_METRIC_FILTERS,
+      minWikipediaSitelinks: 100,
+    });
+
+    expect(famous.length).toBeGreaterThan(0);
+    expect(famous.length).toBeLessThan(band.length);
+    expect(
+      famous.every((city) =>
+        band.some((other) => other.cityId === city.cityId),
+      ),
+    ).toBe(true);
+  });
+
+  it("narrows on a metric a destination can fail", async () => {
+    // Exactly two hours from Hamburg is Diepholz, Heide, Preetz, Sehnde and
+    // Wennigsen; only Heide and Preetz have a Wikivoyage article.
+    const withArticle = await destinationsBetween(HAMBURG, 120, 120, {
+      ...NO_METRIC_FILTERS,
+      minWikivoyageArticles: 1,
+    });
+
+    expect(withArticle.map((city) => city.name).sort()).toEqual([
+      "Heide",
+      "Preetz",
+    ]);
+  });
+
+  it("narrows to the cities a station category is known for", async () => {
+    const band = await destinationsBetween(HAMBURG, 0, CAP_MINUTES);
+    const categorised = await destinationsBetween(HAMBURG, 0, CAP_MINUTES, {
+      ...NO_METRIC_FILTERS,
+      maxDbStationCategory: 4,
+    });
+
+    // The category is Deutsche Bahn's, so it is set for German cities only.
+    expect(categorised.length).toBeGreaterThan(0);
+    expect(categorised.length).toBeLessThan(band.length);
+  });
+
+  it("can narrow to nothing, which is an answer rather than an error", async () => {
+    const impossible = await destinationsBetween(HAMBURG, 0, CAP_MINUTES, {
+      ...NO_METRIC_FILTERS,
+      minWikipediaSitelinks: MAX_SITELINK_FILTER,
+    });
+
+    expect(impossible).toEqual([]);
   });
 });

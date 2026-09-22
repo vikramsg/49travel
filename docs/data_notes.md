@@ -15,7 +15,7 @@ committed.
 | `city_station.parquet` | `city_id, motis_stop_id, station_name` | nothing at runtime; shipped so the stop matching can be reviewed |
 | `travel_time.parquet` | `origin_city_id, city_id, minutes` | the reachability filter |
 | `city_link.parquet` | `city_id, wikipedia_url, wikivoyage_url, wikidata_id` | the popup's article links, and the metrics' Wikidata item |
-| `city_metric.parquet` | `city_id, wikipedia_sitelinks, wikivoyage_article, unesco_sites, tourism_pois, db_station_category` | nothing at runtime yet |
+| `city_metric.parquet` | `city_id, wikipedia_sitelinks, wikivoyage_article, unesco_sites, tourism_pois, db_station_category` | the map's metric filters |
 
 `city_station.motis_stop_id` points at MOTIS, which owns stations. There is no
 local station table, so it is not an enforceable foreign key.

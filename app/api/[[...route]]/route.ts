@@ -1,6 +1,11 @@
 import { Hono } from "hono";
 import { handle } from "hono/vercel";
 import {
+  metricFilterSpec,
+  parseMetricFilters,
+  type MetricFilterProblem,
+} from "@/lib/city-metric-filters";
+import {
   MAX_BAND_HOURS,
   MIN_BAND_HOURS,
   parseHoursBand,
@@ -32,6 +37,16 @@ const BAND_ERROR: Record<HoursBandProblem, string> = {
   "minimum-above-maximum": "minHours must not exceed maxHours",
 };
 
+// Also written for the caller, so it names the parameter that is wrong. The map's
+// form words the same problem with the metric's own name.
+function metricFilterError(problem: MetricFilterProblem): string {
+  if (problem.kind === "not-whole-number") {
+    return `${problem.name} must be a whole number`;
+  }
+  const spec = metricFilterSpec(problem.name);
+  return `${problem.name} must be from ${spec.min} to ${spec.max}`;
+}
+
 /**
  * Destinations reachable from one origin within a whole-hour travel-time band,
  * both bounds inclusive. See `docs/data_notes.md` for what `minutes` means and
@@ -55,6 +70,12 @@ app.get("/reachable", async (c) => {
     return c.json({ error: BAND_ERROR[parsed.problem] }, 400);
   }
 
+  // Every filter is optional, so a request without any is the whole map.
+  const parsedFilters = parseMetricFilters((name) => c.req.query(name));
+  if ("problem" in parsedFilters) {
+    return c.json({ error: metricFilterError(parsedFilters.problem) }, 400);
+  }
+
   // An unknown origin cannot be told apart from a band with nothing in it by an
   // empty result, so it is looked up instead of inferred.
   const origin = await originCity(originParam);
@@ -69,6 +90,7 @@ app.get("/reachable", async (c) => {
     origin.cityId,
     parsed.band.minHours * 60,
     parsed.band.maxHours * 60,
+    parsedFilters.filters,
   );
 
   const measured = await measuredOn();
