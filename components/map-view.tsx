@@ -109,7 +109,7 @@ export function MapView({
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h1 className="text-2xl font-bold">Reachability by train</h1>
+        <h1 className="text-2xl font-bold">Destinations</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Pick an origin and a travel time to see every city a train reaches
           within it.
@@ -238,7 +238,7 @@ export function MapView({
         </li>
         <li className="flex items-center gap-2">
           <LegendDot color={CITY_COLOR} size={10} />
-          Reachable city
+          Destination
         </li>
       </ul>
     </div>
