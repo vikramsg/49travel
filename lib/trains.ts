@@ -8,6 +8,7 @@ import { trainsConnection, trainsDataDir } from "@/lib/duckdb";
 
 const travelTimeParquet = path.join(trainsDataDir, "travel_time.parquet");
 const cityParquet = path.join(trainsDataDir, "city.parquet");
+const cityLinkParquet = path.join(trainsDataDir, "city_link.parquet");
 
 /** A city inside the requested travel-time band, as returned by `GET /api/reachable`. */
 export type Destination = {
@@ -18,6 +19,14 @@ export type Destination = {
   longitude: number;
   /** Minutes from leaving the origin station, per the pipeline's definition. */
   minutes: number;
+  /**
+   * English Wikipedia article, or null when the pipeline resolved none for this
+   * city. Null is a real answer: the map then shows no link rather than one that
+   * leads somewhere else.
+   */
+  wikipediaUrl: string | null;
+  /** English Wikivoyage article, or null. Wikivoyage covers fewer places. */
+  wikivoyageUrl: string | null;
 };
 
 /**
@@ -141,13 +150,22 @@ export async function destinationsBetween(
   const connection = await trainsConnection();
   const reader = await connection.runAndReadAll(
     `SELECT t.city_id AS city_id, c.name AS name, c.latitude AS latitude,
-            c.longitude AS longitude, t.minutes AS minutes
+            c.longitude AS longitude, t.minutes AS minutes,
+            l.wikipedia_url AS wikipedia_url, l.wikivoyage_url AS wikivoyage_url
      FROM read_parquet(?) AS t
      JOIN read_parquet(?) AS c ON c.city_id = t.city_id
+     LEFT JOIN read_parquet(?) AS l ON l.city_id = t.city_id
      WHERE t.origin_city_id = ? AND t.city_id <> t.origin_city_id
        AND t.minutes >= ? AND t.minutes <= ?
      ORDER BY t.minutes, c.name`,
-    [travelTimeParquet, cityParquet, originCityId, minMinutes, maxMinutes],
+    [
+      travelTimeParquet,
+      cityParquet,
+      cityLinkParquet,
+      originCityId,
+      minMinutes,
+      maxMinutes,
+    ],
   );
   return reader.getRowObjectsJS().map((row) => ({
     cityId: row.city_id as string,
@@ -155,5 +173,7 @@ export async function destinationsBetween(
     latitude: Number(row.latitude),
     longitude: Number(row.longitude),
     minutes: Number(row.minutes),
+    wikipediaUrl: (row.wikipedia_url as string | null) ?? null,
+    wikivoyageUrl: (row.wikivoyage_url as string | null) ?? null,
   }));
 }

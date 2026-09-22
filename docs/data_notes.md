@@ -14,6 +14,7 @@ committed.
 | `city.parquet` | `city_id, name, country_code, latitude, longitude, population` | the map's markers |
 | `city_station.parquet` | `city_id, motis_stop_id, station_name` | nothing at runtime; shipped so the stop matching can be reviewed |
 | `travel_time.parquet` | `origin_city_id, city_id, minutes` | the reachability filter |
+| `city_link.parquet` | `city_id, wikipedia_url, wikivoyage_url` | the popup's article links |
 
 `city_station.motis_stop_id` points at MOTIS, which owns stations. There is no
 local station table, so it is not an enforceable foreign key.
@@ -23,6 +24,26 @@ not change between dumps, which a name-derived id would not guarantee.
 
 Every file is written only if it compresses below 10 MB. A run that would
 produce a larger file raises instead of writing it.
+
+## The article links
+
+`city_link.parquet` gives each city its English Wikipedia and Wikivoyage article,
+which the map's popup links. `python/src/trains/links.py` builds it: it asks each
+wiki for the page under the city's own name, follows the normalisations and
+redirects, and keeps the page only when the article's own coordinates sit within
+25 km of the city. That rejects disambiguation pages and places that merely share
+a name.
+
+Resolution goes by name rather than by GeoNames id because the id does not
+reliably name an article. The Wikidata item carrying `P1566` (the GeoNames id) is
+usually a bot-created stub with no articles — Munich's `2867714` resolves to
+`Q32664319`, which has none, while the article-bearing item is `Q1726`.
+
+A city that fails either test gets no link, and the popup then says nothing
+rather than linking to somewhere else. On the committed dataset 3,975 of the
+4,922 cities have a Wikipedia article and 1,358 have a Wikivoyage article. Most
+of the misses are real articles that carry no coordinates at all, so a later pass
+could recover them by checking the article's country in Wikidata instead.
 
 ## What `minutes` means
 

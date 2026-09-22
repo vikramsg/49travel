@@ -100,10 +100,42 @@ export function ReachMap({
             <strong>{destination.name}</strong>
             <br />
             {formatMinutes(destination.minutes)}
+            <DestinationLinks destination={destination} />
           </Popup>
         </Marker>
       ))}
     </MapContainer>
+  );
+}
+
+/**
+ * The destination's articles, as far as the pipeline could resolve them. A city
+ * with neither gets no row: the popup says less rather than linking to a page
+ * about somewhere else. Opened in a new tab so the map keeps its origin, range
+ * and position.
+ */
+function DestinationLinks({ destination }: { destination: Destination }) {
+  const links = [
+    { label: "Wikipedia", href: destination.wikipediaUrl },
+    { label: "Wikivoyage", href: destination.wikivoyageUrl },
+  ].flatMap((link) => (link.href ? [{ ...link, href: link.href }] : []));
+
+  if (links.length === 0) return null;
+
+  return (
+    <span className="mt-1 flex gap-2">
+      {links.map((link) => (
+        <a
+          key={link.label}
+          href={link.href}
+          target="_blank"
+          rel="noreferrer"
+          className="text-primary underline"
+        >
+          {link.label}
+        </a>
+      ))}
+    </span>
   );
 }
 
