@@ -1,9 +1,11 @@
 # AGENTS.md
 
 ## Layout
-- `app/` — Next.js App Router (TypeScript). `page.tsx` is Home, `about/page.tsx`, `origin/[city]/page.tsx` resolves its origin through the city manifest, and `api/[[...route]]/route.ts` mounts Hono.
-- `components/` — `TopBar`, `CityPage`, `github-icon`, plus `components/ui/` for shadcn primitives.
-- `lib/cities.ts` — the single city manifest (slug, display name, origin stop id, coordinates, destination loader). The Home cards and the `/origin/[city]` routes are derived from it.
+- `app/` — Next.js App Router (TypeScript). `page.tsx` is Home, `about/page.tsx`, `origin/[city]/page.tsx` resolves its origin through the city manifest, `map/page.tsx` is the map tab, and `api/[[...route]]/route.ts` mounts Hono.
+- `components/` — `TopBar` (shared, with the Home/Map tabs), `CityPage`, `github-icon`, plus `components/ui/` for shadcn primitives.
+- `components/map-view.tsx` — the map tab's controls, request state and legend. Loads `components/reach-map.tsx` client-side only, because Leaflet needs `window`.
+- `lib/cities.ts` — the single €49 city manifest (slug, display name, origin stop id, destination loader). The Home cards and the `/origin/[city]` routes are derived from it.
+- `lib/trains.ts` — server-side reads of the map's Parquet: the 96 supported origins, the measurement date, and the reachability filter. Both `/map` and `/api/reachable` use it.
 - `lib/duckdb.ts` — native DuckDB connection for the map's Parquet datasets.
 - `python/` — `uv` project (distribution `deutschland-ticket`) for the batch pipeline. The package is `src/travel49/`: `common.py` (sqlite connection) and `city_json.py` (join + emit the €49 JSON).
 - `python/data/travel49/cities.sqlite` — source-of-truth DB (~610 cities, ~460 resolved stops). Committed. **Never delete `.sqlite` files.**
@@ -32,3 +34,10 @@ Root `Makefile` documents only `make city_json`, which delegates to `python/Make
 - The journey search that populated `city_stops` and `{City}_journeys` is archived. Those tables are still in the committed database, and they are what `city_json` reads.
 - Nothing under `python/` needs network access any more. The archived scrapers did.
 - The archived search intentionally disabled long-distance/bus/ferry/subway and dropped FLX trains. That is the ticket constraint — do not "fix" it.
+
+## Map tab
+- `/map` is a navigable tab, not the landing page. Home (`/`, `/origin/[city]`) stays the €49 regional view; `/map` answers "*from city X, what can I reach by any train within Y hours?*" from the any-train dataset. The two surfaces share the TopBar and nothing else.
+- `GET /api/reachable?origin=<city_id>&hours=<n>` returns `{measuredOn, originCityId, cities: [{cityId, name, latitude, longitude, minutes}]}`. `originCityId` and `cityId` are GeoNames ids as strings.
+- Valid `origin` values are exactly the 96 origins present in `travel_time.parquet`; valid `hours` are whole numbers 1–12. Anything else is a `400` with `{error}`.
+- Reachability is `minutes <= hours * 60`, evaluated per request. The origin is returned inside `cities` at `minutes` 0. `measuredOn` is read from the Parquet's `measurement_date` metadata, never hard-coded.
+- `/map` loads the origin list server-side through `lib/trains.ts`; the browser fetches `/api/reachable` and redraws. The measurement day is a frozen snapshot, not live data.
