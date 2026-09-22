@@ -219,7 +219,7 @@ a Wikivoyage article, 456 near a World Heritage Site, 45 with 100+ mapped featur
 `maxDbStationCategory=8`, `maxDbStationCategory=0`, `minTourismPois=many`, `minUnescoSites=-1` — all 400,
 each naming its own parameter.
 
-### Browser
+### Browser, before the sidebar rework
 
 All five controls render. Applying three of them narrows the map to 49 destinations, the status line says
 "narrowed by 3 filters", and the map itself states "Showing destinations with Wikipedia languages at least
@@ -229,6 +229,26 @@ non-numeric bound reports "Mapped sights nearby must be a whole number", marks o
 `aria-invalid`, and points only that input at the message. Nothing overflows at 375 px. Evidence:
 `.agents/baseline/map-filters-applied-desktop.png`, `map-filters-rejected-desktop.png`,
 `map-filters-mobile.png`.
+
+### Browser, after the sidebar rework
+
+On a fresh load: "103 destinations between 0 h and 6 h of Hamburg, narrowed by 2 filters", the map stating
+"Showing destinations with Wikipedia languages at least 60; Mapped sights nearby at least 50", 104 markers,
+the origin selector and the travel-time band both in the sidebar and visible, the button reading "Advanced
+filters · 2 on" and collapsed with `aria-expanded="false"`, no filter input rendered, and "Show all
+destinations" visible without opening it. Opening the button sets `aria-expanded="true"` and prefills exactly
+`minWikipediaSitelinks=60` and `minTourismPois=50`, with the other three blank.
+
+"Show all destinations" returns the unfiltered set: 976 destinations and 977 markers, measured on an earlier
+build of the same handler. Nothing overflows at 375 px, where the sidebar stacks above the map. Evidence:
+`.agents/baseline/map-sidebar-default-desktop.png`, `map-sidebar-advanced-desktop.png`,
+`map-sidebar-mobile.png`.
+
+Two mistakes of my own are worth recording, because each made a check pass that should not have. The first
+verification run served a build from before the default changed, so it reported the single-metric default
+that had already been discarded. The second probed `aria-expanded` on the origin combobox rather than on the
+new button, so "collapsed" and "expanded" were read from the wrong element. Both were harness errors rather
+than product ones, and both were caught by reading the numbers instead of trusting the probe.
 
 ### 16. The map opens on a measured "popular" default; the API does not
 
