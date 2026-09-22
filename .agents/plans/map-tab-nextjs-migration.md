@@ -21,11 +21,15 @@ The existing €49 regional use case is preserved, not replaced. Two use cases c
 - Map UX: **origin selector + hours slider**.
 - Data: **Python via `uv`, Python 3.14, output Parquet**, queried by **native DuckDB inside Hono** (server-side; `duckdb-wasm` dropped).
 - **All Python deps upgraded.**
-- **Python tooling: `uv` + Python 3.14, `ruff` for lint and format, `ty` for type checking, `pytest` for tests.** `black`, `flake8`, `isort`, and `mypy` are removed.
+- **Python tooling: `uv` + Python 3.14, `ruff` for lint and format, `ty` for type checking, `pytest` for tests.** `black`, `flake8`, `isort`, and `mypy` are removed, along with their config and scripts.
+- **Two packages, one Python project.** Existing €49 code is *moved, not rewritten* into `src/travel49/`. All new pipeline code goes in `src/trains/`. They share no models and never import each other.
 - **Pipeline runner: `just`.** MOTIS runs locally for the batch job; the engine binary, OSM extract, and GTFS feeds are **never committed**.
-- **Reachability via MOTIS `one-to-all`**, capped at **12 hours**, run from each of the 7 origins.
 - **Country set = DB Fernverkehr's international network**: Germany + Austria, Switzerland, Netherlands, Belgium, France, Denmark, Poland, Czechia, Italy, Luxembourg.
-- **Destination catalog = the 7 Home cities ∪ the top 10 cities by population per country.** Populations from GeoNames `cities500`, excluding section-of-populated-place codes.
+- **Reachability measured from the 110 largest cities** — the top 10 by population in each of the 11 countries. Populations from GeoNames `cities500`, excluding section-of-populated-place codes.
+- **Destinations are every city over 10,000 population** in those countries: **4,959** places after excluding section codes, minus a **reviewed 37-name exclusion list** of arrondissement-style places (below).
+- **Reachability via MOTIS, capped at 12 hours.** `one-to-many` is preferred if it works in v2.11.3; `one-to-all` is the fallback.
+- **Departures sampled at 05:00, 09:00, 13:00, 17:00, 21:00** local time. Departures between 00:00 and 05:00 are excluded.
+- **One number per origin/destination pair**: the minimum across the sampled departures. No weekday/weekend split.
 - **Committed Parquet must stay under 10 MB per output file.** The pipeline treats this as a hard check and fails rather than committing oversized data.
 - Delivery via **stacked PRs using the GitHub CLI `gh stack` extension** (verified installed here: v0.1.1, `gh` 2.100.0, authed as `vikramsg`).
 - Assumed (call out if wrong): map renders with **react-leaflet + OSM tiles** (no API key).
@@ -33,18 +37,24 @@ The existing €49 regional use case is preserved, not replaced. Two use cases c
 ## Spike results (already done, no further investigation needed)
 
 - **pyhafas is unusable.** `DBProfile.baseUrl` = `reiseauskunft.bahn.de` → **NXDOMAIN**. The successor host `int.bahn.de/bin/mgate.exe` is Akamai-fronted and returns **403** to the mgate protocol. Same in 0.4.0 and 0.6.1. This is endpoint death, not a Python-version issue.
-- **Python 3.14.7 + uv 0.9.15 work.** `pyhafas` installs on 3.14 (deps only `requests` + `pytz`).
-- **`pydantic` v1 cannot run on 3.14** (Pydantic docs: v1 unsupported ≥3.14). `model.py` is the only user; only `JourneySummary` is on the live path.
-- **Transitous (MOTIS) replaces pyhafas.** `https://api.transitous.org/api/v1/plan` returns itineraries whose legs carry `mode` (`HIGHSPEED_RAIL`, `REGIONAL_RAIL`, `WALK`, …), `routeShortName`, `agencyName`, plus itinerary `duration` (seconds) and transfer count. Verified Hamburg→Lüneburg: ICE in 43 min vs regional in 85 min from the same call.
-- Descriptions and coordinates already live in committed `cities.sqlite` (`cities` 610 rows, `cities_lat_lon` 480 rows; all 7 origins' destinations have coordinates, 0 missing).
+- **Python 3.14.7 + uv 0.9.15 work.**
+- **`pydantic` v1 cannot run on 3.14.** Every pydantic model in `model.py` serves a path that is being deleted or archived, so the file goes entirely — no `dataclass` replacement is needed.
+- **Transitous (MOTIS) replaces pyhafas.** `https://api.transitous.org/api/v1/plan` returns itineraries whose legs carry `mode` (`HIGHSPEED_RAIL`, `REGIONAL_RAIL`, `WALK`, …), `routeShortName`, `agencyName`, plus itinerary duration and transfer count. Verified Hamburg→Lüneburg: ICE in 43 min vs regional in 85 min from the same call.
+- **`one-to-all` units.** `maxTravelTime` is in **minutes**; `duration` in the response is also in **minutes**. Verified: Wien comes back as `duration: 637` against an arrival 10 h 37 m after the query. `maxTravelTime=43200` returns zero rows, so there is an upper cap. Treat any duration in this pipeline as minutes, and note that `/api/v1/plan` uses different units.
+- **`duration` includes the wait at the origin.** A query at 00:00Z returns Berlin at 05:25Z with duration 325; the same train queried at 02:37Z returns the same 05:25Z arrival with duration 168. The sample is the time you are standing on the platform, so the reported figure absorbs waiting time. This is *why* several samples are needed: the minimum over samples drives the wait toward zero.
+- **Volume.** `one-to-all` from Hamburg at the 12 h cap returns **223,894 entries** (79 MB), including duplicate station ids across feeds (Berlin Hbf appears twice). Reducing that to cities is the bulk of the work, and `one-to-many` may avoid it entirely.
+- **Day of week barely matters.** Minimum across the 5-point grid, Hamburg to six destinations on Tue/Sat/Sun: identical in four cases, worse on the weekend in two (Amsterdam 302→319, Zürich 542→544). The weekend never wins. This is why there is no weekday/weekend split.
+- **Grid accuracy.** The 5-point grid reports Berlin at 145 min where the true floor is ~135 min, because no sample lands near that departure. Up to ~one grid step of overstatement.
+- **GeoNames shape.** 53,835 places in the 11 countries after excluding section codes; 110 in the top-10-per-country set; 4,959 above 10,000 population.
+- Descriptions and coordinates for the €49 pages already live in the committed seed database (`cities` 610 rows, `cities_lat_lon` 480 rows; all 7 origins' destinations have coordinates, 0 missing).
 
 ## Tidy First
 
 Do these small refactors before the big moves; each makes the intended change easier and safer.
 
-1. **Cut the dead LLM stack before migrating to 3.14.** Delete `python/batch/src/langchain_summarize.py` and the LLM path in `cities.py`; drop `langchain`, `openai`, `text-generation`, `tiktoken`, `tenacity`, `beautifulsoup4`, `pydantic`. Descriptions are already generated and stored. This removes every 3.14 blocker and shrinks the dependency surface before `uv` migration.
-2. **Replace `JourneySummary` with a `dataclass`** in `model.py` so the file can shrink to only what the live path needs.
-3. **Introduce one city manifest** (slug, display name, origin stop id, coordinates) and derive Home cards, `/origin/[city]` routes, and the map's origin selector from it. Today a city is hand-wired in three places (`App.js` imports, `App.js` routes, `Home.js` cards), which is exactly what makes adding the map tab and future cities painful.
+1. **Cut the dead code before migrating to 3.14.** Archive `cities.py`, `langchain_summarize.py`, and the pyhafas `destinations.py`; delete `model.py`. The first three import dependencies that no longer have a use (the descriptions they generated are already stored, and the DB HAFAS endpoint is dead). This removes every 3.14 blocker and shrinks the dependency surface to almost nothing before the `uv` migration.
+2. **Rename the project layout** (`python/batch` → `python`, `test/` → `tests/`) while the tooling is already being rewritten, so no path in a doc or workflow is left pointing at a name that no longer exists. Nothing else on the €49 side is renamed — that code is moved, not rewritten.
+3. **Introduce one city manifest** (slug, display name, origin stop id, coordinates) and derive Home cards and `/origin/[city]` routes from it. Today a city is hand-wired in three places (`App.js` imports, `App.js` routes, `Home.js` cards), which is exactly what makes adding the map tab and future cities painful.
 4. **Move `TopBar` inside the router** and convert its raw `href` links to router links, so the new Map tab doesn't force a full page reload. (`TopBar` currently renders outside `<Router>` in `App.js`.)
 
 ## Target architecture
@@ -56,18 +66,58 @@ Do these small refactors before the big moves; each makes the intended change ea
   app/origin/[city]/page.tsx
   app/map/page.tsx        Map tab: origin Select + hours Slider + Leaflet map
   app/api/[[...route]]/route.ts   Hono via hono/vercel
-justfile                  fetch MOTIS, fetch feeds, import, serve, run pipeline
-python/batch/             uv project, Python 3.14
+python/                   uv project, Python 3.14
+  justfile                fetch MOTIS, fetch feeds, import, serve, run pipeline
   FEEDS.md                feed selection, URLs, licenses, exclusions
-  src/one_to_all.py       MOTIS one-to-all client (replaces pyhafas)
-  src/catalog.py          destination catalog (Home cities + GeoNames top-10)
-  src/emit_parquet.py     → emits Parquet instead of JSON
-  out/*.parquet           published artifacts (committed, small)
-  data/cities.sqlite      seed data (descriptions, coords, stops) — keep, never delete
+  pyproject.toml          PEP 621, ruff + ty config
+  data/
+    travel49/
+      cities.sqlite       €49 seed data (descriptions, coords, stops) — never delete
+    trains/
+      city.parquet        the cities the map draws
+      travel_time.parquet
+                          minutes per origin/destination pair
+  archive/                retired code, excluded from ruff and ty
+  src/
+    travel49/             existing — moved, not rewritten
+      common.py           opens data/travel49/cities.sqlite
+      city_json.py        join + emit the €49 pages' JSON
+    trains/               new
+      motis.py            HTTP client for the local MOTIS server
+      city.py             the city list the map draws
+      travel_time.py      measure minutes from each origin
+  tests/
 .motis/                   GITIGNORED: binary, osm.pbf, gtfs/, config.yml, imported graph
 ```
 
-Hono endpoint: `GET /api/reachable?origin=Hamburg&hours=6` → JSON point set for the map (DuckDB reads the Parquet).
+`trains/` is created by layer 2, when there is code to put in it. An empty package in layer 1 would be speculative structure.
+
+**`city_json.py` stays.** The €49 origin pages keep reading the committed JSON through layer 4, so this is not a dead path — it is the generator for a dataset still in use. Only the root `Makefile`'s `cp … src/data` step changes.
+
+## The map dataset
+
+### Domain rules
+
+| rule | statement |
+|---|---|
+| which cities exist | every place in the 11 countries above 10,000 population, excluding GeoNames section-of-populated-place codes (`PPLX`, `PPLQ`, `PPLCH`, `PPLL`, `PPLS`) |
+| which cities are origins | the largest 10 per country, 110 in total |
+| which stops are a city | the MOTIS stops that count as serving a city — the fragile, reviewed part |
+| what `minutes` means | the minimum, across the 5 sampled departures, of time from leaving the origin station to arriving at any of the city's stations. Includes waiting at the origin. No row if nothing arrives within 12 h |
+| the cap | 12 hours |
+| what is *not* stored | reachability. It is `minutes <= hours * 60`, evaluated by the API when the slider moves |
+
+### Persisted tables
+
+| table | columns | read by |
+|---|---|---|
+| `city` | `city_id, name, country_code, latitude, longitude, population` | the map's markers |
+| `city_station` | `city_id, motis_stop_id, station_name` | nothing at runtime — shipped so the stop matching can be reviewed |
+| `travel_time` | `origin_city_id, city_id, minutes` | the reachability filter |
+
+`city_station.motis_stop_id` points at MOTIS, which owns stations. There is no local station table, so this is not an enforceable foreign key — name it accordingly.
+
+The **measurement date** is written into the Parquet file metadata. Without it a `minutes` value cannot be interpreted, and `.agents/UX.md` requires the UI to say when times were measured.
 
 ## MOTIS toolchain via `just`
 
@@ -77,10 +127,10 @@ MOTIS is self-hosted for the batch job only. `just` replaces the ad-hoc `Makefil
 
 | Path | Committed? | Contents |
 |---|---|---|
-| `justfile` | yes | recipes below |
-| `python/batch/**` | yes | pipeline source |
-| `python/batch/out/*.parquet` | yes | published datasets, **each < 10 MB** (enforced) |
-| `python/batch/data/cities.sqlite` | yes | seed data (descriptions, coords, stops) |
+| `python/justfile` | yes | recipes below |
+| `python/src/**` | yes | pipeline source |
+| `python/data/travel49/cities.sqlite` | yes | seed data (descriptions, coords, stops) |
+| `python/data/trains/*.parquet` | yes | published datasets, **each < 10 MB** (enforced) |
 | `.motis/` | **no** | binary, `osm.pbf`, `gtfs/`, `config.yml`, imported graph |
 
 `.gitignore` must gain `.motis/`.
@@ -102,18 +152,35 @@ motis-import:
 motis-server:
     ...
 
-# one-to-all from each of the 7 origins, capped at 12h → Parquet
+# measure from each of the 110 origins, 12h cap, 5 sampled departures → Parquet
 pipeline:
     ...
 ```
 
 Notes:
 - Pin MOTIS to a release tag (latest is **v2.11.3**; assets are `motis-{linux-amd64,linux-arm64,macos-arm64}.tar.bz2`, `motis-windows.zip`) and record its sha256 in the justfile.
+- **Verify `one-to-many` first.** If v2.11.3 exposes it, `travel_time.py` uses it and skips the whole station-to-city reduction for destinations. If not, fall back to `one-to-all` and reduce.
 - Resolve the national feeds via the **Mobility Database** (`mobilitydatabase.org`, CSV catalog + API, mirrored downloads looked up by country code) rather than hunting 11 separate portals. MOTIS also ingests **NeTEx**, which matters because several EU states publish NeTEx through National Access Points instead of GTFS.
-- The feed set is decided and documented in **`python/batch/FEEDS.md`**: German `de_fv` + `de_rv`, plus every directly-downloadable national feed (**AT** (ÖBB, CC BY 4.0), NL, CH, LU, BE, FR, PL, CZ). Only **DK** is excluded (no GTFS; Rejseplanen needs an account) — its DB-served destinations still appear through `de_fv`, which already contains **203 foreign stations**.
+- The feed set is decided and documented in **`python/FEEDS.md`**: German `de_fv` + `de_rv`, plus every directly-downloadable national feed (**AT** (ÖBB, CC BY 4.0), NL, CH, LU, BE, FR, PL, CZ). Only **DK** is excluded (no GTFS; Rejseplanen needs an account) — its DB-served destinations still appear through `de_fv`, which already contains **203 foreign stations**.
 - `gtfs.de` is Germany-only (feeds `de_fv`, `de_rv`, `de_nv`).
 - MOTIS expects **one** `osm.pbf`. Geofabrik publishes per-country extracts, so the countries must be merged (e.g. with `osmium merge`) into a single file, or a larger Europe extract used instead.
 - `just pipeline` requires the imported graph; it should invoke `motis-import` first if `.motis/data` is absent.
+
+## API contract
+
+```
+GET /api/reachable?origin=<city_id>&hours=<n>
+
+{
+  "measuredOn": "2026-09-22",
+  "originCityId": "hamburg",
+  "cities": [
+    { "cityId": "berlin", "name": "Berlin", "latitude": 52.52, "longitude": 13.405, "minutes": 145 }
+  ]
+}
+```
+
+`measuredOn` exists because `.agents/UX.md` requires the UI to say when the times were measured. The origin is returned inside `cities` too, so the map can mark it distinctly.
 
 ## Delivery: stacked PRs with `gh stack`
 
@@ -123,7 +190,7 @@ Facts that matter for this plan:
 - Each PR targets the branch below it; only the bottom PR targets `main`. Reviewers see only that layer's diff.
 - All branches must live in one repository (no cross-fork stacks).
 - Merge requirements come from the bottom PR's base branch (`main`).
-- Per GitHub's docs, CI checks triggered by PRs on the default branch run for **every** PR in the stack, not just the bottom one — so the existing `pytest.yaml` (`on: pull_request: branches: [main]`) should still run per layer. Verify after the first `gh stack submit`.
+- Per GitHub's docs, CI checks triggered by PRs on the default branch run for **every** PR in the stack, not just the bottom one — so the CI workflow (`on: pull_request: branches: [main]`) should still run per layer. Verify after the first `gh stack submit`.
 - Vercel creates a preview deployment per layer automatically.
 - Public preview: commands and UI may change.
 
@@ -131,12 +198,12 @@ Facts that matter for this plan:
 
 | # | Branch | Depends on | Contents |
 |---|---|---|---|
-| 1 | `uv-migration` | `main` | `python/batch` → uv / PEP 621, Python 3.14, drop LLM + pydantic deps, rewrite CI workflow |
-| 2 | `train-pipeline` | 1 | `just` MOTIS toolchain, destination catalog, one-to-all, Parquet output, tests |
+| 1 | `uv-migration` | `main` | `python/` rename, uv / PEP 621, Python 3.14, ruff + ty, archive dead code, CI rewrite, docs |
+| 2 | `train-pipeline` | 1 | `just` MOTIS toolchain, city table, travel times, Parquet output, tests |
 | 3 | `next-hono-bootstrap` | 1 | CRA → Next (TS, Tailwind, shadcn), port existing pages, mount Hono, prove the €49 behaviour is unchanged |
 | 4 | `map-view` | 2, 3 | `/map` tab, origin Select + hours Slider, `/api/reachable` (native DuckDB), Leaflet; update `AGENTS.md` |
 
-Layers 2 and 3 are independent of each other. Ordering the pipeline **before** the frontend lets the data work land without waiting on the larger Next migration. The originally proposed order (uv → next/hono → pipeline → map) also forms a valid chain, since the map is last and sees everything — it just serialises the pipeline behind the frontend rewrite.
+Layers 2 and 3 are independent of each other. Ordering the pipeline **before** the frontend lets the data work land without waiting on the larger Next migration.
 
 **Coupling to watch:** the root `Makefile` currently copies generated data into `src/data` (a CRA path). Layer 3 deletes `src/`, so whichever of layers 2/3 lands first must fix the published-data location the other references, or the rebase will conflict exactly there. Keep the Parquet path decision in layer 2.
 
@@ -153,49 +220,71 @@ gh stack view
 gh stack merge           # land the stack, or merge layers individually
 ```
 
-## Verification tooling
+## Verification
 
-- `playwright-cli` (`@playwright/cli` v0.1.21) is installed globally, and its skill is installed **repo-local** at `.agents/skills/playwright-cli/`. OpenCode discovers `.agents/skills` as a project skill source, and this keeps the skill scoped to this repo rather than the user's global skills directory.
-- The installer added `.playwright-cli/` to `.gitignore` (its output can contain credentials).
-- Use `playwright-cli` to capture the current CRA behaviour as a baseline before layer 3, and re-run the same checks after the Next migration and for the map. Verification is exploratory/manual, not automated change-detection.
-- The OpenCode built-in browser tool namespace is also available but requires a desktop browser connected to the session, which CLI sessions do not have.
+### Non-UI
+
+- `uv run ruff check`, `uv run ruff format --check`, `uv run ty check`, `uv run pytest` — all from `python/`.
+- The pipeline's own 10 MB check fails the run rather than writing an oversized Parquet.
+
+### UI
+
+Governed by `.agents/UX.md`, which lists the states every control must have and the map tab's requirements control by control.
+
+- **A snapshot image is the evidence.** Drive a real browser with `playwright-cli`, read the snapshot image with the `read` tool, and look at it. An API response, a `curl`, or a DOM assertion is **not** evidence that a screen works.
+- **Capture a CRA baseline before layer 3** and compare the migrated €49 pages against it by picture.
+- **Every control's states get checked by picture** at layers 3 and 4: default, activated, boundary, empty result, error, dismissal, keyboard.
+- These are hand-run checks, deliberately **not** added to the test suite (`AGENTS.md`: do not automate what has to be verified manually).
+- The reviewer cannot see images. It holds the code and the DOM against `.agents/UX.md`; the pixel judgement is mine.
+
+`playwright-cli` (`@playwright/cli` v0.1.21) is installed globally, and its skill is installed **repo-local** at `.agents/skills/playwright-cli/`. The installer added `.playwright-cli/` to `.gitignore`.
 
 ## Phases
 
-Phases map onto the stack layers above; Phase 5 is folded into layers 1, 3, and 4.
-
-**Phase 1 — uv migration (stack layer 1)**
-- Convert `[tool.poetry]` → PEP 621 `[project]`; `requires-python = ">=3.14"`; generate `uv.lock`.
-- Drop the dead LLM/pydantic deps (see Tidy First), archive `langchain_summarize.py` and the LLM path in `cities.py`.
-- Replace the toolchain: delete `static_checks.sh`, `linter.sh`, `.flake8`, `mypy.ini` and the `black`/`flake8`/`isort`/`mypy` dev deps. Add **`ruff`** (lint + format) and **`ty`** (typecheck). Testing is **`pytest` only**.
-- Rewrite `.github/workflows/pytest.yaml` from Poetry to uv and the new commands.
-- Update `AGENTS.md` so its Python commands match the new toolchain.
+**Phase 1 — uv migration and layout (stack layer 1)**
+- `python/batch/` → `python/`. `test/` → `tests/`. `data/` splits into `data/travel49/` (the seed sqlite) and `data/trains/` (empty until layer 2).
+- `pyproject.toml` → PEP 621 `[project]`; `requires-python = ">=3.14"`; generate `uv.lock`; delete `poetry.lock`.
+- Dependencies after archiving: **`click`** only. Dev: `pytest`, `ruff`, `ty`. Drop `pydantic`, `langchain`, `openai`, `text-generation`, `tiktoken`, `tenacity`, `beautifulsoup4`, `pyhafas`, `requests`, `python-dotenv`, `pytest-mock`, and the old toolchain deps.
+- Archive to `python/archive/` under their existing names: `cities.py`, `langchain_summarize.py`, `destinations.py`. Only `destinations.py` needs a different name, because `archive/` already holds the v6 scraper under that name — it becomes `pyhafas_destinations.py`, named for the engine that made it dead.
+- Delete: `src/model.py`, `tests/test_cities.py`, `tests/test_destinations.py`, `static_checks.sh`, `linter.sh`, `.flake8`, `mypy.ini`.
+- Move the surviving code into `src/travel49/` unchanged: `common.py` (minus the dead `session_with_retry` and the unused `table_name` parameter) and `city_json.py`.
+- Configure ruff and ty with `archive/` excluded.
+- Rewrite the CI workflow from Poetry to uv, running ruff, ty and pytest. Rename it away from `pytest.yaml`.
+- Update `python/Makefile`, `python/README.md`, `python/.vscode/settings.json`, and `AGENTS.md` so no command points at poetry or a stale path.
+- Write `.agents/implementation-notes/uv-migration.md`.
 
 **Phase 2 — MOTIS pipeline (stack layer 2, independent of the frontend)**
-- Add the `justfile` and `.motis/` gitignore entry; implement `motis-fetch`, `motis-data`, `motis-import`, `motis-server`.
-- Assemble the feeds: gtfs.de (Germany) plus one national feed per DB Fernverkehr country (AT, CH, NL, BE, FR, DK, PL, CZ, IT, LU); merge per-country OSM extracts into the single `osm.pbf`.
-- Build the destination catalog: the 7 Home cities ∪ GeoNames `cities500` top-10 per country (exclude `PPLX`/`PPLQ`/`PPLCH`/`PPLL`/`PPLS`, sanity-check population outliers).
-- Implement `one_to_all.py`: one-to-all per origin, 12h cap, sampled departures, minimum travel time per reachable stop; match reachable stops to catalog cities.
-- Emit **Parquet** to `python/batch/out/`. Remove the `city_json.py` JSON path and the root `cp … src/data` step.
-- Port the pytest suite; add tests for the catalog selection and the reachability mapping.
+- Create `src/trains/`. Add the `justfile` and the `.motis/` gitignore entry; implement `motis-fetch`, `motis-data`, `motis-import`, `motis-server`.
+- **Verify `one-to-many` in v2.11.3** before writing the measurement loop; record the outcome either way.
+- Assemble the feeds (see `FEEDS.md`); merge per-country OSM extracts into the single `osm.pbf`.
+- `city.py`: build the city table from GeoNames `cities500` — the 11 countries, section codes excluded, origins being the largest 10 per country, and arrondissement-style places removed via the reviewed exclusion constant. Write `city.parquet`.
+- Match stations to cities and write `city_station.parquet`.
+- `travel_time.py`: for each origin, measure at 05:00, 09:00, 13:00, 17:00, 21:00 local; keep the minimum per destination city; write `travel_time.parquet` with the measurement date in the file metadata. Enforce the 10 MB cap.
+- Replace `python/Makefile` and the root `Makefile`'s pipeline targets with `just`; remove the root `cp … src/data` step.
+- Tests for the city selection rules and the reduction from a canned MOTIS response.
 
 **Phase 3 — Backend + Next.js (stack layer 3)**
+- **Capture the CRA baseline by picture first.**
 - Scaffold Next.js App Router + TS + Tailwind + shadcn at root; retire CRA.
 - Port Home, About, TopBar, CityPage to shadcn/Tailwind. Introduce the city manifest from Tidy First.
 - Keep the origin pages on the regional dataset.
-- Add Hono at `app/api/[[...route]]/route.ts`; native DuckDB (`@duckdb/node-api`) reading the committed Parquet, bundled via `outputFileTracingIncludes`. Verify locally and on a Vercel preview with `curl`.
+- Add Hono at `app/api/[[...route]]/route.ts`; native DuckDB (`@duckdb/node-api`) reading the committed Parquet, bundled via `outputFileTracingIncludes`. Verify locally and on a Vercel preview.
+- Compare the migrated €49 pages against the baseline by picture.
 
 **Phase 4 — Map tab (stack layer 4)**
 - Add the `/map` route + nav tab.
 - Origin Select + hours Slider (shadcn); react-leaflet map; fetch from `/api/reachable`.
+- Meet `.agents/UX.md` control by control, including a searchable origin selector across 110 origins, human time formatting, and the "measured on" note.
 - Update `AGENTS.md` for the new stack and commands.
 
 ## Risks / caveats
 
-- **Feed assembly and OSM merging.** The German feed alone covers DB's international network (203 foreign stations), so the optional national feeds (AT, NL, CH, LU, BE, FR, PL, CZ) are for onward travel only. Remaining effort is pinning feed URLs and merging per-country OSM extracts into the single `osm.pbf` MOTIS expects. See `python/batch/FEEDS.md`.
+- **Feed assembly and OSM merging.** The German feed alone covers DB's international network (203 foreign stations), so the national feeds (AT, NL, CH, LU, BE, FR, PL, CZ) are for onward travel only. Remaining effort is pinning feed URLs and merging per-country OSM extracts into the single `osm.pbf` MOTIS expects. See `python/FEEDS.md`.
 - **Feed staleness.** Free gtfs.de feeds are valid 7 days; importing is a repeatable batch step, so pin the import date and re-run rather than expecting a fixed dataset.
-- **Mode classification must be verified.** MOTIS has more than two rail modes (`HIGHSPEED_RAIL`, `LONG_DISTANCE`, `NIGHT_RAIL`, `REGIONAL_RAIL`, …); "regional vs any-train" must map correctly (some IC/EC may not be `HIGHSPEED_RAIL`).
-- **GeoNames quality.** Population is city-proper and occasionally wrong (an Austria run produced a bogus 54k entry), so the top-10 selection needs a sanity pass.
+- **GeoNames quality at a 10,000 threshold — resolved.** Section codes do not catch districts, so `Paris 15 Vaugirard` (229,713) enters the set as if it were a city. A mechanical rule (a place whose name starts with another place's name in the same country, where that place has at least twice the population) identifies 43 candidates across all 11 countries: the 20 Paris and 16 Marseille arrondissements and `Brno střed`, which are genuine exclusions, plus 6 false positives (`Freiberg am Neckar`, `Alba Adriatica`, `Macerata Campania`, `Massa Lubrense`, `Brzeg Dolny`, `Krosno Odrzańskie`), which are real separate towns. The rule is therefore **not used at runtime**. The list of 37 genuine exclusions lives in `city.py` as a named constant with its rationale. A second data source was considered and rejected: Wikidata's SPARQL endpoint times out, and OSM or Natural Earth would add a source to pin and a cross-source matching problem for a 37-name residual.
+- **`one-to-all` volume.** 110 origins × 5 samples × ~79 MB ≈ 44 GB of responses if `one-to-many` is unavailable.
+- **Grid accuracy.** The 5-point grid overstates the true minimum by up to about one grid step (measured: Berlin 145 vs a true ~135). Accepted; moving to an hourly grid costs 2,090 calls instead of 550.
+- **Station matching.** MOTIS returns feed-specific stop ids, so one station can appear under several ids (Berlin Hbf came back twice under different feeds). A bad match silently drops a city from the map, which is why `city_station` ships for review.
 - **Native DuckDB in a Vercel function** adds cold-start and native-addon bundling risk, and the Parquet must ship inside the bundle. Total rows are small, so DuckDB is heavier than strictly needed — accepted deliberately.
 - **Vercel Hobby:** non-commercial only; function duration capped (60s per the limits doc). Both fine for this app.
 - **shadcn/Tailwind means a full component rewrite**, since `react-bootstrap` is dropped.
@@ -203,7 +292,7 @@ Phases map onto the stack layers above; Phase 5 is folded into layers 1, 3, and 
 
 ## What I need reviewed
 
-- Whether the two-dataset split is the right boundary, or whether the map should also offer a "€49 only" toggle that reuses the regional dataset.
-- Whether server-side DuckDB has enough payoff over a plain Parquet/JSON fetch at this data size.
-- The Tidy First ordering: cutting the LLM stack and the city manifest before the migration, versus doing them during it.
-- The choice of self-hosted MOTIS (feed assembly and re-import maintenance) versus the public Transitous API.
+- **Grid density.** 5 samples for 550 calls, or denser for closer to the true floor.
+- **`one-to-many`.** Whether v2.11.3 exposes it — it decides whether the station-to-city reduction exists at all.
+- **Server-side DuckDB** has enough payoff over a plain Parquet/JSON fetch at this data size.
+- **Self-hosted MOTIS** (feed assembly and re-import maintenance) versus the public Transitous API.
